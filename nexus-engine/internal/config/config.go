@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
 // Config holds all runtime configuration for nexus-engine.
 type Config struct {
+	mu sync.RWMutex
+
 	// Mode is "dev" or "prod". Affects network policies and mTLS enforcement.
 	Mode string
 
@@ -109,6 +112,9 @@ type SessionConfig struct {
 // All values have sensible defaults for local dev mode.
 // SaveToFile writes the current configuration to an environment file.
 func (c *Config) SaveToFile(path string) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -134,6 +140,13 @@ func (c *Config) SaveToFile(path string) error {
 	} else {
 		fmt.Fprintf(f, "NEXUS_NODE_AGENT_INSECURE=false\n")
 	}
+
+	// Soft Config
+	fmt.Fprintf(f, "NEXUS_DEFAULT_CPU_LIMIT=%s\n", c.Challenge.DefaultCPULimit)
+	fmt.Fprintf(f, "NEXUS_DEFAULT_MEMORY_LIMIT=%s\n", c.Challenge.DefaultMemoryLimit)
+	fmt.Fprintf(f, "NEXUS_DEFAULT_SESSION_TTL_MINUTES=%d\n", c.Session.DefaultTTLMinutes)
+	fmt.Fprintf(f, "NEXUS_MAX_SESSIONS_PER_USER=%d\n", c.Session.MaxPerUser)
+	fmt.Fprintf(f, "NEXUS_MAX_WORKERS=%d\n", c.Reconciler.MaxWorkers)
 
 	return nil
 }
@@ -220,6 +233,70 @@ func (c *Config) IsProd() bool { return c.Mode == "prod" }
 
 // ListenAddr returns the full HTTP listen address.
 func (c *Config) ListenAddr() string { return ":" + c.Port }
+
+// --- Getters ---
+
+func (c *Config) GetDefaultCPULimit() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Challenge.DefaultCPULimit
+}
+
+func (c *Config) GetDefaultMemoryLimit() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Challenge.DefaultMemoryLimit
+}
+
+func (c *Config) GetDefaultTTLMinutes() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Session.DefaultTTLMinutes
+}
+
+func (c *Config) GetMaxPerUser() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Session.MaxPerUser
+}
+
+func (c *Config) GetMaxWorkers() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Reconciler.MaxWorkers
+}
+
+// --- Setters ---
+
+func (c *Config) SetDefaultCPULimit(val string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Challenge.DefaultCPULimit = val
+}
+
+func (c *Config) SetDefaultMemoryLimit(val string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Challenge.DefaultMemoryLimit = val
+}
+
+func (c *Config) SetDefaultTTLMinutes(val int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Session.DefaultTTLMinutes = val
+}
+
+func (c *Config) SetMaxPerUser(val int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Session.MaxPerUser = val
+}
+
+func (c *Config) SetMaxWorkers(val int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Reconciler.MaxWorkers = val
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 

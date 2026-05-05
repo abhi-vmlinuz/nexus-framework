@@ -92,7 +92,8 @@ pub fn sanitize_user_id(user_id: &str) -> String {
         .map(|c| if c == ' ' { '-' } else { c })
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
         .collect();
-    s.truncate(26);
+    // Truncate to 19 chars so that "nexus-user-" (11) + 19 = 30 chars (max is 31).
+    s.truncate(19);
     if s.is_empty() {
         "unknown".to_string()
     } else {

@@ -360,6 +360,24 @@ func (c *Client) UpdateRegistry(req UpdateRegistryRequest) (map[string]any, erro
 	return resp, c.put("/api/v1/admin/registry", req, &resp)
 }
 
+type UpdateConfigRequest struct {
+	DefaultCPULimit    *string `json:"default_cpu_limit,omitempty"`
+	DefaultMemoryLimit *string `json:"default_memory_limit,omitempty"`
+	DefaultTTLMinutes  *int    `json:"default_ttl_minutes,omitempty"`
+	MaxSessionsPerUser *int    `json:"max_sessions_per_user,omitempty"`
+	MaxWorkers         *int    `json:"max_workers,omitempty"`
+}
+
+func (c *Client) UpdateConfig(req UpdateConfigRequest) (map[string]any, error) {
+	var resp map[string]any
+	return resp, c.put("/api/v1/admin/config", req, &resp)
+}
+
+func (c *Client) GetEngineConfig() (map[string]any, error) {
+	var resp map[string]any
+	return resp, c.get("/api/v1/admin/config", &resp)
+}
+
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 func (c *Client) get(path string, out any) error {

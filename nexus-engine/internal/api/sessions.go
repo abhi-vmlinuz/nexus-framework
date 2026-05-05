@@ -54,12 +54,13 @@ func (h *sessionHandler) Create(c *gin.Context) {
 	}
 
 	// Enforce session limit if configured.
-	if h.d.Cfg.Session.MaxPerUser > 0 {
+	maxPerUser := h.d.Cfg.GetMaxPerUser()
+	if maxPerUser > 0 {
 		count, _ := h.d.Store.CountUserActiveSessions(req.UserID)
-		if count >= h.d.Cfg.Session.MaxPerUser {
+		if count >= maxPerUser {
 			c.JSON(http.StatusConflict, gin.H{
 				"error":   "SESSION_LIMIT_REACHED",
-				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", req.UserID, count, h.d.Cfg.Session.MaxPerUser),
+				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", req.UserID, count, maxPerUser),
 			})
 			return
 		}
@@ -202,8 +203,8 @@ func (h *sessionHandler) Create(c *gin.Context) {
 }
 
 func (h *sessionHandler) mapToK8sResources(r *state.Resources) *k8s.Resources {
-	cpu := h.d.Cfg.Challenge.DefaultCPULimit
-	mem := h.d.Cfg.Challenge.DefaultMemoryLimit
+	cpu := h.d.Cfg.GetDefaultCPULimit()
+	mem := h.d.Cfg.GetDefaultMemoryLimit()
 
 	if r != nil {
 		if r.CPU != "" {
@@ -322,7 +323,7 @@ func (h *sessionHandler) Extend(c *gin.Context) {
 		return
 	}
 	if req.DurationMinutes <= 0 {
-		req.DurationMinutes = h.d.Cfg.Session.DefaultTTLMinutes
+		req.DurationMinutes = h.d.Cfg.GetDefaultTTLMinutes()
 	}
 
 	oldExpiry := sess.ExpiresAt

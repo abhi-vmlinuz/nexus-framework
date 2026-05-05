@@ -98,6 +98,55 @@ func (h *adminHandler) Config(c *gin.Context) {
 	})
 }
 
+type UpdateConfigRequest struct {
+	DefaultCPULimit    *string `json:"default_cpu_limit,omitempty"`
+	DefaultMemoryLimit *string `json:"default_memory_limit,omitempty"`
+	DefaultTTLMinutes  *int    `json:"default_ttl_minutes,omitempty"`
+	MaxSessionsPerUser *int    `json:"max_sessions_per_user,omitempty"`
+	MaxWorkers         *int    `json:"max_workers,omitempty"`
+}
+
+func (h *adminHandler) UpdateConfig(c *gin.Context) {
+	var req UpdateConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.DefaultCPULimit != nil {
+		h.d.Cfg.SetDefaultCPULimit(*req.DefaultCPULimit)
+	}
+	if req.DefaultMemoryLimit != nil {
+		h.d.Cfg.SetDefaultMemoryLimit(*req.DefaultMemoryLimit)
+	}
+	if req.DefaultTTLMinutes != nil {
+		h.d.Cfg.SetDefaultTTLMinutes(*req.DefaultTTLMinutes)
+	}
+	if req.MaxSessionsPerUser != nil {
+		h.d.Cfg.SetMaxPerUser(*req.MaxSessionsPerUser)
+	}
+	if req.MaxWorkers != nil {
+		h.d.Cfg.SetMaxWorkers(*req.MaxWorkers)
+	}
+
+	// Persist to disk
+	if err := h.d.Cfg.SaveToFile("/etc/nexus/engine.env"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist config: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Config updated and hot-reloaded successfully.",
+		"config": gin.H{
+			"default_cpu_limit":    h.d.Cfg.GetDefaultCPULimit(),
+			"default_memory_limit": h.d.Cfg.GetDefaultMemoryLimit(),
+			"default_ttl_minutes":  h.d.Cfg.GetDefaultTTLMinutes(),
+			"max_per_user":         h.d.Cfg.GetMaxPerUser(),
+			"max_workers":          h.d.Cfg.GetMaxWorkers(),
+		},
+	})
+}
+
 func (h *adminHandler) UpdateRegistry(c *gin.Context) {
 	var req struct {
 		URL      string `json:"url" binding:"required"`

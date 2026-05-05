@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"strconv"
+
 	"github.com/nexus-oss/nexus/nexus-cli/client"
 	"github.com/nexus-oss/nexus/nexus-cli/config"
 	"github.com/nexus-oss/nexus/nexus-cli/tui"
@@ -177,35 +179,128 @@ func newConfigCmd(makeClient func() *client.Client) *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "view",
-		Short: "View current configuration",
+		Short: "View current configuration (CLI and remote Engine)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			c := makeClient()
+
+			// 1. Local CLI Config
 			cfg, err := config.LoadConfigWithEnvFallback()
 			if err != nil {
 				return err
 			}
 			cfg.CheckEnvMismatch()
+			fmt.Printf("--- LOCAL CLI CONFIGURATION ---\n")
 			cfg.Display()
+
+			// 2. Remote Engine Config
+			fmt.Printf("\n--- REMOTE ENGINE CONFIGURATION (Hot-Reloadable) ---\n")
+			engineCfg, err := c.GetEngineConfig()
+			if err != nil {
+				fmt.Printf("  ⚠️  Engine unreachable: %v\n", err)
+				fmt.Printf("  (Verify engine is running and engine.url is correct in CLI config)\n")
+			} else {
+				// Display Engine Config (Soft + Hard)
+				fmt.Printf("  URL:           %s\n", cfg.Engine.URL)
+				fmt.Printf("  Mode:          %v\n", engineCfg["mode"])
+				fmt.Printf("  Namespace:     %v\n", engineCfg["k3s_namespace"])
+
+				if ch, ok := engineCfg["challenge"].(map[string]any); ok {
+					fmt.Printf("\n  Default Challenge Limits:\n")
+					fmt.Printf("    CPU:         %v\n", ch["default_cpu_limit"])
+					fmt.Printf("    Memory:      %v\n", ch["default_memory_limit"])
+				}
+
+				if sess, ok := engineCfg["session"].(map[string]any); ok {
+					fmt.Printf("\n  Session Lifecycle:\n")
+					fmt.Printf("    Default TTL: %v min\n", sess["default_ttl_minutes"])
+					fmt.Printf("    Max Per User: %v\n", sess["max_sessions_per_user"])
+				}
+
+				if rec, ok := engineCfg["reconciler"].(map[string]any); ok {
+					fmt.Printf("\n  Reconciler:\n")
+					fmt.Printf("    Workers:     %v\n", rec["max_workers"])
+				}
+			}
+
 			return nil
 		},
 	})
 
+	engineKeys := []string{
+		"challenge.cpu",
+		"challenge.memory",
+		"session.ttl",
+		"session.max_per_user",
+		"reconciler.workers",
+	}
+	cliKeys := []string{
+		"engine.url",
+		"engine.mode",
+		"registry.type",
+		"registry.url",
+		"registry.auth.type",
+		"registry.auth.username",
+		"registry.auth.password",
+		"redis.url",
+		"node_agent.addr",
+		"k8s.namespace",
+	}
+	allKeys := append(engineKeys, cliKeys...)
+
 	cmd.AddCommand(&cobra.Command{
-		Use:   "set <key> <value>",
-		Short: "Set a configuration value",
-		Args:  cobra.ExactArgs(2),
+		Use:       "set <key> <value>",
+		Short:     "Set a configuration value (local CLI or remote Engine)",
+		ValidArgs: allKeys,
+		Args:      cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.LoadConfig() // Load from file to update it
-			if err != nil {
-				// Create an empty config if it doesn't exist
-				cfg = &config.Config{}
-			}
 			key := args[0]
 			val := args[1]
-			if err := cfg.Set(key, val); err != nil {
-				return fmt.Errorf("failed to set %s: %w", key, err)
+
+			// 1. Try Engine Hot-Reload if key matches
+			isEngineKey := false
+			for _, k := range engineKeys {
+				if k == key {
+					isEngineKey = true
+					break
+				}
 			}
-			fmt.Printf("Config updated: %s = %s\n", key, val)
-			fmt.Printf("Config saved to: %s\n", config.Path())
+
+			if isEngineKey {
+				c := makeClient()
+				req := client.UpdateConfigRequest{}
+				switch key {
+				case "challenge.cpu":
+					req.DefaultCPULimit = &val
+				case "challenge.memory":
+					req.DefaultMemoryLimit = &val
+				case "session.ttl":
+					v, _ := strconv.Atoi(val)
+					req.DefaultTTLMinutes = &v
+				case "session.max_per_user":
+					v, _ := strconv.Atoi(val)
+					req.MaxSessionsPerUser = &v
+				case "reconciler.workers":
+					v, _ := strconv.Atoi(val)
+					req.MaxWorkers = &v
+				}
+
+				resp, err := c.UpdateConfig(req)
+				if err != nil {
+					return fmt.Errorf("failed to update engine config: %w", err)
+				}
+				fmt.Printf("✓ Engine: %s\n", resp["message"])
+				return nil
+			}
+
+			// 2. Fallback to Local CLI Config
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				cfg = &config.Config{}
+			}
+			if err := cfg.Set(key, val); err != nil {
+				return fmt.Errorf("failed to set local config %s: %w", key, err)
+			}
+			fmt.Printf("✓ CLI: updated %s = %s\n", key, val)
 			return nil
 		},
 	})

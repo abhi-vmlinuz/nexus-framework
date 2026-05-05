@@ -7,7 +7,6 @@ target/
 **/target/
 prompts/
 testing/
-scripts/
 # Build artifacts
 *.o
 *.out
@@ -28,3 +27,4 @@ dist/
 # OS junk
 .DS_Store
 Thumbs.db
+CHANGELOG_INTERNAL.md
