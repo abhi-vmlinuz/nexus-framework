@@ -171,7 +171,28 @@ While user-specific settings are in your home directory, the **Nexus Engine** ma
 - **Config Path**: `/etc/nexus/engine.env`
 - **Permissions**: `0644` (managed by `sudo`)
 
-This file is automatically synchronized when you use the `nexus config registry` command.
+This file is automatically synchronized when you use the `nexus config registry` or `nexus config set` commands.
+
+### Runtime Configuration (Hot-Reload)
+
+Nexus supports "Soft Config" hot-reloading. Parameters like resource limits and session TTLs can be updated live without restarting the engine.
+
+| Key | Description | Example |
+|---|---|---|
+| `challenge.cpu` | Default CPU cores for pods | `0.5`, `1.0`, `500m` |
+| `challenge.memory` | Default RAM limit (requires suffix!) | `256Mi`, `1Gi` |
+| `session.ttl` | Default session duration (minutes) | `60`, `120` |
+| `session.max_per_user` | Concurrent sessions per player | `3`, `5` |
+
+> [!IMPORTANT]
+> **Memory Suffixes**: Always use `Mi` (Megabytes) or `Gi` (Gigabytes). Setting `challenge.memory` to a plain number like `512` assigns **512 bytes**, which will cause containers to crash immediately.
+
+Use the CLI to apply these changes:
+```bash
+nexus config set challenge.cpu 0.5
+nexus config set challenge.memory 512Mi
+```
+Changes are applied to future pods immediately and persisted to `/etc/nexus/engine.env`.
 
 ### Environment Variable Overrides
 
@@ -234,8 +255,12 @@ nexus challenge list
 # Create a new challenge from a docker-compose file
 nexus compose up ./testing/pwn-101/docker-compose.yml
 
-# View current configuration
+# View current configuration (Local CLI + Remote Engine)
 nexus config view
+
+# Hot-reload the engine with new defaults
+nexus config set challenge.cpu 1.0
+nexus config set session.ttl 120
 
 # Configure Docker Hub, GHCR, or ECR (Interactive)
 nexus config registry
