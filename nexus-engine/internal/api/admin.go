@@ -136,7 +136,7 @@ func (h *adminHandler) UpdateConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Config updated and hot-reloaded successfully.",
+		"message": "Config updated successfully.",
 		"config": gin.H{
 			"default_cpu_limit":    h.d.Cfg.GetDefaultCPULimit(),
 			"default_memory_limit": h.d.Cfg.GetDefaultMemoryLimit(),
