@@ -327,15 +327,19 @@ func (h *sessionHandler) Extend(c *gin.Context) {
 	}
 
 	oldExpiry := sess.ExpiresAt
-	if err := h.d.Store.ExtendSession(id, req.DurationMinutes); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	newExpiry := oldExpiry.Add(time.Duration(req.DurationMinutes) * time.Minute)
+
+	// Update pod TTL annotation FIRST.
+	// Kubernetes expects this to be the total lifetime since pod creation.
+	newTotalLifetime := int(newExpiry.Sub(sess.CreatedAt).Minutes())
+	if err := h.d.K8s.ExtendPodTTL(id, newTotalLifetime); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to extend K8s pod TTL: %v", err)})
 		return
 	}
 
-	// Update pod TTL annotation.
-	remaining := int(time.Until(oldExpiry).Minutes()) + req.DurationMinutes
-	if err := h.d.K8s.ExtendPodTTL(id, remaining); err != nil {
-		log.Printf("session %s: ExtendPodTTL failed (non-fatal): %v", id, err)
+	if err := h.d.Store.ExtendSession(id, req.DurationMinutes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to extend session in store: %v", err)})
+		return
 	}
 
 	if _, err := h.d.Store.TouchDesiredVersion(id, "session_extend"); err != nil {

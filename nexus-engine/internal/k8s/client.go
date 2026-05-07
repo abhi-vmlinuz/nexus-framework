@@ -323,9 +323,18 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 	// Wait up to 90s for pod IP.
 	for i := 0; i < 90; i++ {
 		p, err := c.clientset.CoreV1().Pods(c.namespace).Get(ctx, podName, metav1.GetOptions{})
-		if err == nil && p.Status.PodIP != "" {
-			log.Printf("pod %s ready: ip=%s containers=%d", podName, p.Status.PodIP, len(podContainers))
-			return &PodInfo{PodName: podName, PodIP: p.Status.PodIP}, nil
+		if err == nil {
+			if p.Status.PodIP != "" {
+				log.Printf("pod %s ready: ip=%s containers=%d", podName, p.Status.PodIP, len(podContainers))
+				return &PodInfo{PodName: podName, PodIP: p.Status.PodIP}, nil
+			}
+			// Check for Insufficient Capacity
+			for _, cond := range p.Status.Conditions {
+				if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionFalse && cond.Reason == "Unschedulable" {
+					c.clientset.CoreV1().Pods(c.namespace).Delete(ctx, podName, metav1.DeleteOptions{})
+					return nil, fmt.Errorf("insufficient cluster capacity: %s", cond.Message)
+				}
+			}
 		}
 		time.Sleep(time.Second)
 	}

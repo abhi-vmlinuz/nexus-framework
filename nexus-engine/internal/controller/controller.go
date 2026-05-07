@@ -319,8 +319,8 @@ func (c *Controller) reconcileRunning(sess state.Session) error {
 		return nil
 	}
 
-	if podStatus == "not_found" {
-		log.Printf("⚠️  session %s pod missing, marking failed", sess.ID)
+	if podStatus == "not_found" || podStatus == "Failed" || podStatus == "Succeeded" {
+		log.Printf("⚠️  session %s pod missing or crashed (status=%s), marking failed", sess.ID, podStatus)
 		sess.Status = "failed"
 		c.store.UpdateSession(sess)
 		metricRepairsTotal.Inc()
@@ -335,7 +335,7 @@ func (c *Controller) reconcileRunning(sess state.Session) error {
 		if err := c.agent.GrantPodAccess(ctx, sess.UserID, sess.PodIP); err != nil {
 			if !isMissingClientErr(err) {
 				metricRPCErrors.Inc()
-				log.Printf("⚠️  reconcile GrantPodAccess(%s, %s): %v", sess.UserID, sess.PodIP, err)
+				return fmt.Errorf("GrantPodAccess failed: %w", err)
 			}
 		}
 
@@ -343,7 +343,7 @@ func (c *Controller) reconcileRunning(sess state.Session) error {
 			if err := c.agent.EnsureUserIsolation(ctx, sess.UserID, sess.VpnIP); err != nil {
 				if !isMissingClientErr(err) {
 					metricRPCErrors.Inc()
-					log.Printf("⚠️  reconcile EnsureUserIsolation(%s, %s): %v", sess.UserID, sess.VpnIP, err)
+					return fmt.Errorf("EnsureUserIsolation failed: %w", err)
 				}
 			}
 		}

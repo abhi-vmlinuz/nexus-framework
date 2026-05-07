@@ -341,21 +341,21 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 		agentPath := filepath.Join(repoRoot, "nexus-node-agent")
 
 		// Build Engine
-		o1, err := RunCommand(fmt.Sprintf("cd %s && go build -o /tmp/nexus-engine ./cmd && sudo mv /tmp/nexus-engine /usr/local/bin/", enginePath))
+		_, err := RunCommand(fmt.Sprintf("cd %s && go build -o /tmp/nexus-engine ./cmd && sudo mv /tmp/nexus-engine /usr/local/bin/", enginePath))
 		if err != nil {
 			return out, fmt.Errorf("engine build failed: %w", err)
 		}
 		out += "Nexus Engine built and installed locally\n"
 
 		// Build CLI
-		o2, err := RunCommand(fmt.Sprintf("cd %s && go build -o /tmp/nexus . && sudo mv /tmp/nexus /usr/local/bin/", cliPath))
+		_, err = RunCommand(fmt.Sprintf("cd %s && go build -o /tmp/nexus . && sudo mv /tmp/nexus /usr/local/bin/", cliPath))
 		if err != nil {
 			return out, fmt.Errorf("cli build failed: %w", err)
 		}
 		out += "Nexus CLI built and installed locally\n"
 
 		// Build Agent (Rust)
-		o3, err := RunCommand(fmt.Sprintf("cd %s && cargo build --release && sudo mv target/release/nexus-node-agent /usr/local/bin/", agentPath))
+		_, err = RunCommand(fmt.Sprintf("cd %s && cargo build --release && sudo mv target/release/nexus-node-agent /usr/local/bin/", agentPath))
 		if err != nil {
 			return out, fmt.Errorf("agent build failed: %w", err)
 		}
@@ -407,8 +407,39 @@ func WriteConfigFile(home string, conf Config) (string, error) {
 	return "Configuration written to " + filepath.Join(dir, "config.json"), nil
 }
 
-// SetupServices handles Phase 8
+// SetupMTLSCertificates handles mTLS generation
+func SetupMTLSCertificates(mode string) (string, error) {
+	if mode == "dev" {
+		return "Dev mode: skipping mTLS cert generation", nil
+	}
+
+	certDir := "/etc/nexus"
+	RunCommand("sudo mkdir -p " + certDir)
+
+	// Generate CA
+	RunCommand(fmt.Sprintf("sudo openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -keyout %s/ca.key -out %s/ca.crt -subj '/CN=Nexus Root CA'", certDir, certDir))
+
+	// Generate Server Cert (Node Agent)
+	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-server.key -out %s/agent-server.csr -subj '/CN=localhost'", certDir, certDir))
+	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-server.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-server.crt -days 365", certDir, certDir, certDir, certDir))
+
+	// Generate Client Cert (Engine)
+	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-client.key -out %s/agent-client.csr -subj '/CN=nexus-engine'", certDir, certDir))
+	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-client.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-client.crt -days 365", certDir, certDir, certDir, certDir))
+
+	// Permissions
+	RunCommand(fmt.Sprintf("sudo chmod 600 %s/*.key %s/*.crt", certDir, certDir))
+
+	return "mTLS certificates generated in " + certDir, nil
+}
+
+// SetupServices handles systemd setup
 func SetupServices(mode, port, redisURL, regURL, agentAddr, namespace string) (string, error) {
+	insecure := "true"
+	if mode == "prod" {
+		insecure = "false"
+	}
+
 	agentSvc := fmt.Sprintf(`[Unit]
 Description=Nexus OSS Node Agent
 After=network.target
@@ -419,12 +450,12 @@ ExecStart=/usr/local/bin/nexus-node-agent
 Restart=on-failure
 Environment=NEXUS_MODE=%s
 Environment=NODE_AGENT_LISTEN_ADDR=0.0.0.0:50051
-Environment=NODE_AGENT_INSECURE=true
+Environment=NODE_AGENT_INSECURE=%s
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
 
 [Install]
-WantedBy=multi-user.target`, mode)
+WantedBy=multi-user.target`, mode, insecure)
 
 	engineSvc := fmt.Sprintf(`[Unit]
 Description=Nexus OSS Engine

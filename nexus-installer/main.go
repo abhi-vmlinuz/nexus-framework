@@ -177,7 +177,7 @@ func (m Model) handleNext() (Model, tea.Cmd) {
 	case PageSummary:
 		m.CurrentPage = PageInstalling
 		m.Installing = true
-		m.CurrentTask = "Phase 0/10: Initializing environment..."
+		m.CurrentTask = "Phase 0/11: Initializing environment..."
 
 		return m, tea.Batch(
 			m.Spinner.Tick,
@@ -206,19 +206,19 @@ func (m Model) runInstallation(step int) tea.Cmd {
 			name string
 			fn   func() (string, error)
 		}{
-			{"Phase 0/10: Initializing environment...", func() (string, error) { return internal.InitializeInstaller() }},
-			{"Phase 1/10: Installing system packages...", func() (string, error) { return internal.InstallPackages(m.RedisBackend) }},
-			{"Phase 2/10: Setting up k3s...", func() (string, error) { return internal.InstallK3s(m.K8sNamespace) }},
-			{"Phase 3/10: Configuring nerdctl & permissions...", func() (string, error) { return internal.InstallNerdctl(user) }},
-			{"Phase 4/10: Configuring registry...", func() (string, error) { return internal.SetupRegistry(m.RegistryType, m.RegistryURL, m.RegistryUser, m.RegistryPass) }},
-			{"Phase 5/10: Deploying Redis...", func() (string, error) { return internal.InstallRedis(m.RedisBackend, m.RedisURL) }},
-			{"Phase 6/10: Setting up WireGuard...", func() (string, error) {
+			{"Phase 0/11: Initializing environment...", func() (string, error) { return internal.InitializeInstaller() }},
+			{"Phase 1/11: Installing system packages...", func() (string, error) { return internal.InstallPackages(m.RedisBackend) }},
+			{"Phase 2/11: Setting up k3s...", func() (string, error) { return internal.InstallK3s(m.K8sNamespace) }},
+			{"Phase 3/11: Configuring nerdctl & permissions...", func() (string, error) { return internal.InstallNerdctl(user) }},
+			{"Phase 4/11: Configuring registry...", func() (string, error) { return internal.SetupRegistry(m.RegistryType, m.RegistryURL, m.RegistryUser, m.RegistryPass) }},
+			{"Phase 5/11: Deploying Redis...", func() (string, error) { return internal.InstallRedis(m.RedisBackend, m.RedisURL) }},
+			{"Phase 6/11: Setting up WireGuard...", func() (string, error) {
 				if m.Mode == "prod" {
 					return internal.SetupWireGuard()
 				}
 				return "Skipped (Dev mode)", nil
 			}},
-			{"Phase 7/10: Building & installing Nexus binaries...", func() (string, error) {
+			{"Phase 7/11: Building & installing Nexus binaries...", func() (string, error) {
 				cwd, _ := os.Getwd()
 				repoRoot := cwd
 				// Detect repo root by looking for nexus-engine
@@ -230,7 +230,10 @@ func (m Model) runInstallation(step int) tea.Cmd {
 				}
 				return internal.BuildAndInstallBinaries(repoRoot)
 			}},
-			{"Phase 8/10: Writing Nexus configuration...", func() (string, error) {
+			{"Phase 8/11: Generating mTLS certificates...", func() (string, error) {
+				return internal.SetupMTLSCertificates(m.Mode)
+			}},
+			{"Phase 9/11: Writing Nexus configuration...", func() (string, error) {
 				conf := internal.Config{
 					Mode:          m.Mode,
 					RedisBackend:  m.RedisBackend,
@@ -246,10 +249,10 @@ func (m Model) runInstallation(step int) tea.Cmd {
 				}
 				return internal.WriteConfigFile(home, conf)
 			}},
-			{"Phase 9/10: Orchestrating systemd services...", func() (string, error) {
+			{"Phase 10/11: Orchestrating systemd services...", func() (string, error) {
 				return internal.SetupServices(m.Mode, m.EnginePort, m.RedisURL, m.RegistryURL, "127.0.0.1:50051", m.K8sNamespace)
 			}},
-			{"Phase 10/10: Finalizing shell completion...", func() (string, error) {
+			{"Phase 11/11: Finalizing shell completion...", func() (string, error) {
 				return internal.SetupShellCompletion(home)
 			}},
 		}
