@@ -270,14 +270,18 @@ PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING 
 	return RunCommand(cmd)
 }
 
-const Version = "v0.1.1"
+var Version = "v0.1.1"
 
 // BuildAndInstallBinaries handles Phase 7.
 // Hybrid model: Try downloading prebuilt binaries first, fallback to local build.
 func BuildAndInstallBinaries(repoRoot string) (string, error) {
 	out := ""
 	arch := DetectArch()
-	baseURL := fmt.Sprintf("https://github.com/abhi-vmlinuz/nexus-oss/releases/download/%s", Version)
+	releaseTag := Version
+	if strings.HasSuffix(Version, "-dev") {
+		releaseTag = "latest-dev"
+	}
+	baseURL := fmt.Sprintf("https://github.com/abhi-vmlinuz/nexus-oss/releases/download/%s", releaseTag)
 
 	binaries := []string{"nexus-engine", "nexus", "nexus-node-agent"}
 	binaryMap := map[string]string{

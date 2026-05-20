@@ -2,21 +2,62 @@ name: Release
 
 on:
   push:
+    branches: [ main ]
     tags:
       - 'v*'
   pull_request:
     branches: [ main ]
 
 jobs:
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.vars.outputs.VERSION }}
+      RELEASE_TAG: ${{ steps.vars.outputs.RELEASE_TAG }}
+      IS_RELEASE: ${{ steps.vars.outputs.IS_RELEASE }}
+      PRERELEASE: ${{ steps.vars.outputs.PRERELEASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set Version Variable
+        id: vars
+        run: |
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            echo "VERSION=${TAG_NAME}" >> $GITHUB_OUTPUT
+            echo "RELEASE_TAG=${TAG_NAME}" >> $GITHUB_OUTPUT
+            if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+              echo "IS_RELEASE=false" >> $GITHUB_OUTPUT
+            else
+              echo "IS_RELEASE=true" >> $GITHUB_OUTPUT
+            fi
+            if [[ "$TAG_NAME" == *-* ]]; then
+              echo "PRERELEASE=true" >> $GITHUB_OUTPUT
+            else
+              echo "PRERELEASE=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            BASE_VERSION=$(grep -oP 'var Version = "\K[^"]+' nexus-cli/cmd/version.go || echo "v0.1.1")
+            echo "VERSION=${BASE_VERSION}-dev" >> $GITHUB_OUTPUT
+            echo "RELEASE_TAG=latest-dev" >> $GITHUB_OUTPUT
+            if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+              echo "IS_RELEASE=false" >> $GITHUB_OUTPUT
+            else
+              echo "IS_RELEASE=true" >> $GITHUB_OUTPUT
+            fi
+            echo "PRERELEASE=true" >> $GITHUB_OUTPUT
+          fi
+
   build-go:
     name: Build Go Binaries
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - { name: nexus-engine, path: ./nexus-engine/cmd }
-          - { name: nexus-cli, path: ./nexus-cli }
-          - { name: nexus-installer, path: ./nexus-installer }
+          - { name: nexus-engine, path: ./nexus-engine/cmd, output: nexus-engine }
+          - { name: nexus-cli, path: ./nexus-cli, output: nexus-cli }
+          - { name: nexus-installer, path: ./nexus-installer, output: nexus-installer }
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -24,63 +65,61 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Set Version Variable
-        id: vars
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=v0.0.0-dev" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build AMD64
         run: |
-          PACKAGE="github.com/nexus-oss/nexus/${{ matrix.name }}"
-          # Map matrix name to the internal package containing Version
           if [[ "${{ matrix.name }}" == "nexus-engine" ]]; then VPATH="main"; 
           elif [[ "${{ matrix.name }}" == "nexus-cli" ]]; then VPATH="github.com/nexus-oss/nexus/nexus-cli/cmd";
           else VPATH="github.com/nexus-oss/nexus/nexus-installer/internal"; fi
           
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X ${VPATH}.Version=${{ steps.vars.outputs.VERSION }}" -o ${{ matrix.name }}-linux-amd64 ${{ matrix.path }}
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X ${VPATH}.Version=${{ needs.setup.outputs.VERSION }}" -o ${{ matrix.output }}-linux-amd64 ${{ matrix.path }}
 
       - name: Build ARM64
         run: |
-          PACKAGE="github.com/nexus-oss/nexus/${{ matrix.name }}"
           if [[ "${{ matrix.name }}" == "nexus-engine" ]]; then VPATH="main"; 
           elif [[ "${{ matrix.name }}" == "nexus-cli" ]]; then VPATH="github.com/nexus-oss/nexus/nexus-cli/cmd";
           else VPATH="github.com/nexus-oss/nexus/nexus-installer/internal"; fi
 
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X ${VPATH}.Version=${{ steps.vars.outputs.VERSION }}" -o ${{ matrix.name }}-linux-arm64 ${{ matrix.path }}
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X ${VPATH}.Version=${{ needs.setup.outputs.VERSION }}" -o ${{ matrix.output }}-linux-arm64 ${{ matrix.path }}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: go-binaries-${{ matrix.name }}
-          path: ${{ matrix.name }}-linux-*
+          path: ${{ matrix.output }}-linux-*
 
   build-rust:
     name: Build Rust Binaries
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
 
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross.git
+      - name: Install Protobuf Compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+
+      - name: Install cargo-zigbuild
+        run: pip install cargo-zigbuild
 
       - name: Build AMD64 (MUSL)
         run: |
           cd nexus-node-agent
-          cross build --release --target x86_64-unknown-linux-musl
+          cargo zigbuild --release --target x86_64-unknown-linux-musl
           cp target/x86_64-unknown-linux-musl/release/nexus-node-agent ../nexus-node-agent-linux-amd64
 
       - name: Build ARM64 (MUSL)
         run: |
           cd nexus-node-agent
-          cross build --release --target aarch64-unknown-linux-musl
+          cargo zigbuild --release --target aarch64-unknown-linux-musl
           cp target/aarch64-unknown-linux-musl/release/nexus-node-agent ../nexus-node-agent-linux-arm64
 
       - name: Upload Artifacts
@@ -90,10 +129,10 @@ jobs:
           path: nexus-node-agent-linux-*
 
   release:
-    name: Create Release
-    needs: [build-go, build-rust]
+    name: Create/Update Release
+    needs: [setup, build-go, build-rust]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: needs.setup.outputs.IS_RELEASE == 'true'
     steps:
       - name: Download Go Binaries (Engine)
         uses: actions/download-artifact@v4
@@ -118,13 +157,32 @@ jobs:
       - name: Generate Checksums
         run: sha256sum nexus-* > checksums.txt
 
-      - name: Create Release
+      - name: Generate Release Body
+        run: |
+          if [[ "${{ needs.setup.outputs.RELEASE_TAG }}" == "latest-dev" ]]; then
+            echo "### Nexus OSS Dev Channel (Rolling Build)" > release_body.txt
+            echo "Automatic rolling build of the latest commit on main. Expect experimental changes." >> release_body.txt
+          else
+            echo "### Nexus OSS Release ${{ needs.setup.outputs.RELEASE_TAG }}" > release_body.txt
+            echo "Official release ${{ needs.setup.outputs.RELEASE_TAG }} of Nexus OSS." >> release_body.txt
+          fi
+          echo "" >> release_body.txt
+          echo "### Checksums" >> release_body.txt
+          echo "\`\`\`" >> release_body.txt
+          cat checksums.txt >> release_body.txt
+          echo "\`\`\`" >> release_body.txt
+
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.setup.outputs.RELEASE_TAG }}
+          name: ${{ needs.setup.outputs.RELEASE_TAG == 'latest-dev' && 'Nexus OSS Dev Channel (Rolling)' || format('Nexus OSS {0}', needs.setup.outputs.RELEASE_TAG) }}
+          body_path: release_body.txt
           files: |
             nexus-*
             checksums.txt
           draft: false
-          prerelease: true
+          prerelease: ${{ needs.setup.outputs.PRERELEASE == 'true' }}
+          make_latest: ${{ needs.setup.outputs.RELEASE_TAG != 'latest-dev' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
