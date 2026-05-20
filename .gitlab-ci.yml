@@ -1,0 +1,143 @@
+stages:
+  - setup
+  - build
+  - deploy
+
+setup-env:
+  stage: setup
+  image: alpine:latest
+  script:
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG_NAME="$CI_COMMIT_TAG"
+        echo "VERSION=$TAG_NAME" >> build.env
+        echo "RELEASE_TAG=$TAG_NAME" >> build.env
+        echo "IS_RELEASE=true" >> build.env
+        if [[ "$TAG_NAME" == *-* ]]; then
+          echo "PRERELEASE=true" >> build.env
+        else
+          echo "PRERELEASE=false" >> build.env
+        fi
+      elif [ "$CI_COMMIT_BRANCH" = "main" ]; then
+        BASE_VERSION=$(grep -oE 'var Version = "[^"]+"' nexus-cli/cmd/version.go | cut -d'"' -f2 || echo "v0.1.1")
+        echo "VERSION=${BASE_VERSION}-dev" >> build.env
+        echo "RELEASE_TAG=latest-dev" >> build.env
+        echo "IS_RELEASE=true" >> build.env
+        echo "PRERELEASE=true" >> build.env
+      else
+        echo "VERSION=v0.0.0-dev" >> build.env
+        echo "RELEASE_TAG=latest-dev" >> build.env
+        echo "IS_RELEASE=false" >> build.env
+        echo "PRERELEASE=true" >> build.env
+      fi
+  artifacts:
+    reports:
+      dotenv: build.env
+
+build-go:
+  stage: build
+  image: golang:1.24
+  needs:
+    - setup-env
+  script:
+    - |
+      # Build AMD64
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o nexus-engine-linux-amd64 ./nexus-engine/cmd
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o nexus-cli-linux-amd64 ./nexus-cli
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o nexus-installer-linux-amd64 ./nexus-installer
+
+      # Build ARM64
+      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o nexus-engine-linux-arm64 ./nexus-engine/cmd
+      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o nexus-cli-linux-arm64 ./nexus-cli
+      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o nexus-installer-linux-arm64 ./nexus-installer
+  artifacts:
+    paths:
+      - nexus-engine-linux-*
+      - nexus-cli-linux-*
+      - nexus-installer-linux-*
+
+build-rust:
+  stage: build
+  image: rust:latest
+  needs:
+    - setup-env
+  script:
+    - |
+      # Install dependencies
+      apt-get update && apt-get install -y protobuf-compiler python3-pip xz-utils wget
+      pip3 install cargo-zigbuild --break-system-packages || pip3 install cargo-zigbuild
+      
+      # Install Zig compiler for cross compiling
+      wget -q https://ziglang.org/download/0.12.0/zig-linux-x86_64-0.12.0.tar.xz
+      tar -xf zig-linux-x86_64-0.12.0.tar.xz
+      mv zig-linux-x86_64-0.12.0 /usr/local/zig
+      export PATH=$PATH:/usr/local/zig
+      
+      # Setup targets
+      rustup target add x86_64-unknown-linux-musl
+      rustup target add aarch64-unknown-linux-musl
+      
+      # Compile Rust Agent
+      cd nexus-node-agent
+      cargo zigbuild --release --target x86_64-unknown-linux-musl
+      cp target/x86_64-unknown-linux-musl/release/nexus-node-agent ../nexus-node-agent-linux-amd64
+      
+      cargo zigbuild --release --target aarch64-unknown-linux-musl
+      cp target/aarch64-unknown-linux-musl/release/nexus-node-agent ../nexus-node-agent-linux-arm64
+  artifacts:
+    paths:
+      - nexus-node-agent-linux-*
+
+upload-packages:
+  stage: deploy
+  image: curlimages/curl:latest
+  needs:
+    - setup-env
+    - build-go
+    - build-rust
+  script:
+    - |
+      if [ "$IS_RELEASE" != "true" ]; then
+        echo "Skipping package upload (not a release push)."
+        exit 0
+      fi
+      
+      echo "Generating checksums..."
+      sha256sum nexus-* > checksums.txt
+      
+      echo "Uploading binaries to GitLab Generic Package Registry..."
+      for file in nexus-* checksums.txt; do
+        echo "Uploading $file..."
+        curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+             --upload-file "$file" \
+             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}/$file"
+      done
+
+create-release:
+  stage: deploy
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - setup-env
+    - upload-packages
+  script:
+    - |
+      if [ "$IS_RELEASE" != "true" ]; then
+        echo "Skipping release creation."
+        exit 0
+      fi
+      
+      REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}"
+      
+      echo "Creating GitLab Release for tag: ${RELEASE_TAG}"
+      release-cli create --name "Nexus OSS ${RELEASE_TAG}" \
+        --description "Automated build of version ${VERSION}" \
+        --tag-name "${RELEASE_TAG}" \
+        --assets-link "{\"name\":\"nexus-engine-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-engine-linux-amd64\"}" \
+        --assets-link "{\"name\":\"nexus-engine-linux-arm64\",\"url\":\"${REGISTRY_URL}/nexus-engine-linux-arm64\"}" \
+        --assets-link "{\"name\":\"nexus-cli-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-cli-linux-amd64\"}" \
+        --assets-link "{\"name\":\"nexus-cli-linux-arm64\",\"url\":\"${REGISTRY_URL}/nexus-cli-linux-arm64\"}" \
+        --assets-link "{\"name\":\"nexus-installer-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-installer-linux-amd64\"}" \
+        --assets-link "{\"name\":\"nexus-installer-linux-arm64\",\"url\":\"${REGISTRY_URL}/nexus-installer-linux-arm64\"}" \
+        --assets-link "{\"name\":\"nexus-node-agent-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-node-agent-linux-amd64\"}" \
+        --assets-link "{\"name\":\"nexus-node-agent-linux-arm64\",\"url\":\"${REGISTRY_URL}/nexus-node-agent-linux-arm64\"}" \
+        --assets-link "{\"name\":\"checksums.txt\",\"url\":\"${REGISTRY_URL}/checksums.txt\"}"
