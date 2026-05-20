@@ -26,7 +26,7 @@ func (m Model) View() string {
 	case PageMode:
 		content = m.renderSelectionPage("Operating Mode", "Choose your operating mode:", []string{"dev", "prod"}, []string{"Development (local, allow-all networking)", "Production (VPN-only, strict isolation)"})
 	case PageRedis:
-		content = m.renderSelectionPage("Redis Backend", "How should Redis be deployed?", []string{"docker", "host"}, []string{"Docker container (recommended)", "System package (requires existing install)"})
+		content = m.renderSelectionPage("Redis Backend", "How should Redis be deployed?", []string{"nerdctl", "host"}, []string{"k3s container namespace (via nerdctl) [recommended]", "System package (requires existing install)"})
 	case PageRegistry:
 		content = m.renderSelectionPage("Container Registry", "Where should challenge images be stored?", []string{"local", "dockerhub", "ghcr", "ecr", "custom"}, []string{"Local registry (localhost:5000)", "Docker Hub", "GitHub Container Registry", "AWS ECR", "Custom registry"})
 	case PageCredentials:
@@ -162,7 +162,11 @@ func (m Model) renderInstallingPage() string {
 
 func (m Model) renderCompletePage() string {
 	title := StyleSuccess.Render("Setup Complete!")
-	body := fmt.Sprintf("\nNexus OSS is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json\n\nPress Enter to exit", m.EnginePort, m.AgentPort)
+	redisTip := ""
+	if m.RedisBackend == "nerdctl" {
+		redisTip = "\n\nOperational Tip:\n  To manage the Redis container, use:\n  sudo nerdctl --address /run/k3s/containerd/containerd.sock ps"
+	}
+	body := fmt.Sprintf("\nNexus OSS is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json%s\n\nPress Enter to exit", m.EnginePort, m.AgentPort, redisTip)
 
 	return StyleBox.Render(lipgloss.JoinVertical(lipgloss.Center, title, body))
 }

@@ -237,7 +237,7 @@ func SetupRegistry(regType, regURL, user, pass string) (string, error) {
 
 // InstallRedis handles Phase 5
 func InstallRedis(backend, url string) (string, error) {
-	if backend == "docker" {
+	if backend == "nerdctl" {
 		if _, err := RunCommand("sudo /usr/local/bin/nerdctl --address /run/k3s/containerd/containerd.sock ps -a | grep nexus-redis"); err == nil {
 			return "Redis already exists, skipping...", nil
 		}

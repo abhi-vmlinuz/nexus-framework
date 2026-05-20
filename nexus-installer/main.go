@@ -149,7 +149,7 @@ func (m Model) handleNext() (Model, tea.Cmd) {
 		m.Cursor = 0
 	case PageRedis:
 		if m.Cursor == 0 {
-			m.RedisBackend = "docker"
+			m.RedisBackend = "nerdctl"
 		} else {
 			m.RedisBackend = "host"
 		}

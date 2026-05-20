@@ -25,7 +25,7 @@ type Model struct {
 
 	// Configuration state
 	Mode            string // dev/prod
-	RedisBackend    string // docker/host
+	RedisBackend    string // nerdctl/host
 	RegistryType    string // local/dockerhub/ghcr/ecr/custom
 	RegistryURL     string
 	RegistryUser    string
@@ -58,7 +58,7 @@ func NewModel() Model {
 	return Model{
 		CurrentPage:  PageWelcome,
 		Mode:         "dev",
-		RedisBackend: "docker",
+		RedisBackend: "nerdctl",
 		RegistryType: "local",
 		EnginePort:   "8081",
 		AgentPort:    "50051",

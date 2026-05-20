@@ -288,7 +288,7 @@ func (c *Config) Validate() error {
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf(strings.Join(errors, "\n\n"))
+		return fmt.Errorf("%s", strings.Join(errors, "\n\n"))
 	}
 
 	return nil
