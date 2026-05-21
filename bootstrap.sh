@@ -44,7 +44,7 @@ fi
 # Clone to a temporary directory if not already in a repo
 TEMP_DIR=$(mktemp -d)
 echo -e "${BLUE}Cloning Nexus OSS to $TEMP_DIR...${NC}"
-git clone https://github.com/abhi-vmlinuz/nexus-oss.git "$TEMP_DIR"
+git clone https://gitlab.com/abhi-vmlinuz/nexus-oss.git "$TEMP_DIR"
 
 # Change to repo root
 cd "$TEMP_DIR"

@@ -124,7 +124,7 @@ A full-screen TUI installer written in Go using Bubbletea. Replaces the legacy `
 Install Nexus OSS on any supported Linux distribution with a single command:
 
 ```bash
-curl -fSL https://raw.githubusercontent.com/abhi-vmlinuz/nexus-oss/main/bootstrap.sh | bash
+curl -fSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
 ```
 
 ### Manual Installation
@@ -132,7 +132,7 @@ curl -fSL https://raw.githubusercontent.com/abhi-vmlinuz/nexus-oss/main/bootstra
 If you prefer to audit the code first or clone manually:
 
 ```bash
-git clone https://github.com/abhi-vmlinuz/nexus-oss.git
+git clone https://gitlab.com/abhi-vmlinuz/nexus-oss.git
 cd nexus-oss
 chmod +x build-installer.sh
 ./build-installer.sh
