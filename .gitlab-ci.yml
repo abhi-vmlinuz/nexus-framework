@@ -51,10 +51,12 @@ build-go:
     - setup-env
   variables:
     GOCACHE: $CI_PROJECT_DIR/.go-cache
+    GOPATH: $CI_PROJECT_DIR/.go-path
   cache:
     key: "go-cache"
     paths:
       - .go-cache/
+      - .go-path/pkg/mod/
   script:
     - |
       # Build AMD64
@@ -146,6 +148,9 @@ create-release:
         echo "Skipping release creation."
         exit 0
       fi
+      
+      # Install curl (the release-cli image is a minimal Alpine build)
+      apk add --no-cache curl
       
       REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}"
       
