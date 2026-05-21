@@ -149,8 +149,19 @@ create-release:
       
       REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}"
       
-      echo "Creating/Updating GitLab Release for tag: ${RELEASE_TAG}"
-      release-cli create --name "Nexus OSS ${RELEASE_TAG}" \
+      # Check if release exists using the GitLab API
+      echo "Checking if release exists for tag: ${RELEASE_TAG}..."
+      HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/${RELEASE_TAG}")
+      
+      if [ "$HTTP_STATUS" = "200" ]; then
+        echo "Release exists. Performing update."
+        ACTION="update"
+      else
+        echo "Release does not exist. Performing create."
+        ACTION="create"
+      fi
+      
+      release-cli ${ACTION} --name "Nexus OSS ${RELEASE_TAG}" \
         --description "Automated build of version ${VERSION}" \
         --tag-name "${RELEASE_TAG}" \
         --assets-link "{\"name\":\"nexus-engine-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-engine-linux-amd64\"}" \
