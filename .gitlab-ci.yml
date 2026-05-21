@@ -44,7 +44,9 @@ setup-env:
 
 build-go:
   stage: build
-  image: golang:1.24
+  image:
+    name: registry.gitlab.com/abhi-vmlinuz/nexus-oss/nexus-ci-builder:latest
+    entrypoint: [""]
   needs:
     - setup-env
   variables:
@@ -73,7 +75,9 @@ build-go:
 
 build-rust:
   stage: build
-  image: rust:latest
+  image:
+    name: registry.gitlab.com/abhi-vmlinuz/nexus-oss/nexus-ci-builder:latest
+    entrypoint: [""]
   needs:
     - setup-env
   parallel:
@@ -84,37 +88,14 @@ build-rust:
         ARCH: arm64
   variables:
     CARGO_HOME: $CI_PROJECT_DIR/.cargo
-    PATH: $CI_PROJECT_DIR/.zig:$CI_PROJECT_DIR/.cargo/bin:$PATH
   cache:
     key: "rust-cache-${TARGET}"
     paths:
       - .cargo/
-      - .zig/
       - nexus-node-agent/target/
   script:
     - |
-      # Install system packages (apt-get)
-      apt-get update && apt-get install -y protobuf-compiler xz-utils wget
-      
-      # Download & install Zig compiler if not already cached
-      if [ ! -d ".zig" ]; then
-        echo "Zig not cached. Downloading..."
-        wget -q https://ziglang.org/download/0.12.0/zig-linux-x86_64-0.12.0.tar.xz
-        tar -xf zig-linux-x86_64-0.12.0.tar.xz
-        mv zig-linux-x86_64-0.12.0 .zig
-        rm zig-linux-x86_64-0.12.0.tar.xz
-      fi
-      
-      # Install cargo-zigbuild natively if not already cached
-      if ! command -v cargo-zigbuild &> /dev/null; then
-        echo "Installing cargo-zigbuild..."
-        cargo install cargo-zigbuild
-      fi
-      
-      # Install target architecture toolchain
-      rustup target add ${TARGET}
-      
-      # Compile Rust Node Agent
+      # Compile Rust Node Agent using pre-installed tools
       cd nexus-node-agent
       cargo zigbuild --release --target ${TARGET}
       cp target/${TARGET}/release/nexus-node-agent ../nexus-node-agent-linux-${ARCH}
