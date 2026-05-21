@@ -42,14 +42,14 @@ build-go:
   script:
     - |
       # Build AMD64
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o nexus-engine-linux-amd64 ./nexus-engine/cmd
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o nexus-cli-linux-amd64 ./nexus-cli
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o nexus-installer-linux-amd64 ./nexus-installer
+      (cd nexus-engine && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o ../nexus-engine-linux-amd64 ./cmd)
+      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-amd64 .)
+      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-amd64 .)
 
       # Build ARM64
-      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o nexus-engine-linux-arm64 ./nexus-engine/cmd
-      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o nexus-cli-linux-arm64 ./nexus-cli
-      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o nexus-installer-linux-arm64 ./nexus-installer
+      (cd nexus-engine && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o ../nexus-engine-linux-arm64 ./cmd)
+      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-arm64 .)
+      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-arm64 .)
   artifacts:
     paths:
       - nexus-engine-linux-*
