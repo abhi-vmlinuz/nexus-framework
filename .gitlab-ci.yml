@@ -103,10 +103,10 @@ upload-packages:
       fi
       
       echo "Generating checksums..."
-      sha256sum nexus-* > checksums.txt
+      sha256sum nexus-*-linux-* > checksums.txt
       
       echo "Uploading binaries to GitLab Generic Package Registry..."
-      for file in nexus-* checksums.txt; do
+      for file in nexus-*-linux-* checksums.txt; do
         echo "Uploading $file..."
         curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
              --upload-file "$file" \
