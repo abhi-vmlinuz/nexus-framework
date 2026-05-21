@@ -3,8 +3,23 @@ workflow:
     # Do not trigger pipelines when the rolling latest-dev tag is updated
     - if: $CI_COMMIT_TAG == "latest-dev"
       when: never
-    # Trigger on other tags, commits to main, or merge requests
-    - if: $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Trigger on other version tags always (to ensure release binaries are compiled)
+    - if: $CI_COMMIT_TAG
+      when: always
+    # Trigger on commits to main or merge requests only if codebase files have changed
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "nexus-engine/**/*"
+        - "nexus-cli/**/*"
+        - "nexus-node-agent/**/*"
+        - "nexus-installer/**/*"
+        - "Dockerfile"
+        - ".gitlab-ci.yml"
+        - "bootstrap.sh"
+        - "build-installer.sh"
+      when: always
+    # Do not trigger pipelines otherwise (e.g. README/docs only updates)
+    - when: never
 
 stages:
   - setup
