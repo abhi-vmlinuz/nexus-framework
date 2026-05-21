@@ -9,53 +9,63 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Nexus OSS - One-Click Bootstrapper${NC}"
 
-# Check for git
-if ! command -v git &>/dev/null; then
-    echo -e "${BLUE}Git not found. Installing...${NC}"
-    if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y git;
-    elif command -v dnf &>/dev/null; then sudo dnf install -y git;
-    elif command -v pacman &>/dev/null; then sudo pacman -S --noconfirm --needed git;
-    elif command -v zypper &>/dev/null; then sudo zypper install -y git;
-    else echo -e "${RED}Error: Package manager not found. Please install git manually.${NC}"; exit 1;
+# Detect architecture
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+    *)       echo -e "${RED}Error: Unsupported architecture: $ARCH. Only x86_64 (amd64) and aarch64 (arm64) are supported.${NC}"; exit 1 ;;
+esac
+
+# Check for curl
+if ! command -v curl &>/dev/null; then
+    echo -e "${BLUE}curl not found. Installing...${NC}"
+    if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y curl;
+    elif command -v dnf &>/dev/null; then sudo dnf install -y curl;
+    elif command -v pacman &>/dev/null; then sudo pacman -S --noconfirm --needed curl;
+    elif command -v zypper &>/dev/null; then sudo zypper install -y curl;
+    else echo -e "${RED}Error: Package manager not found. Please install curl manually.${NC}"; exit 1;
     fi
-else
-    echo -e "${GREEN}Git is already installed.${NC}"
 fi
 
-# Check for go (required to build the installer TUI)
-if ! command -v go &>/dev/null; then
-    echo -e "${BLUE}Go compiler not found. Installing...${NC}"
-    if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y golang-go;
-    elif command -v dnf &>/dev/null; then sudo dnf install -y golang;
-    elif command -v pacman &>/dev/null; then sudo pacman -S --noconfirm --needed go;
-    elif command -v zypper &>/dev/null; then sudo zypper install -y go;
-    else echo -e "${RED}Error: Package manager not found. Please install Go (golang) manually.${NC}"; exit 1;
-    fi
-    
-    # Verify installation
-    if ! command -v go &>/dev/null; then
-        echo -e "${RED}Error: Go installation failed. Please install Go manually.${NC}"
-        exit 1
-    fi
-else
-    echo -e "${GREEN}Go is already installed: $(go version)${NC}"
-fi
+# Define release tag (can be overridden by environment variable)
+RELEASE_TAG="${RELEASE_TAG:-latest-dev}"
+REGISTRY_URL="https://gitlab.com/api/v4/projects/abhi-vmlinuz%2Fnexus-oss/packages/generic/nexus-oss/${RELEASE_TAG}"
 
-# Clone to a temporary directory if not already in a repo
 TEMP_DIR=$(mktemp -d)
-echo -e "${BLUE}Cloning Nexus OSS to $TEMP_DIR...${NC}"
-git clone https://gitlab.com/abhi-vmlinuz/nexus-oss.git "$TEMP_DIR"
+INSTALLER_BIN="${TEMP_DIR}/nexus-installer"
 
-# Change to repo root
-cd "$TEMP_DIR"
+echo -e "${BLUE}Downloading prebuilt installer for Linux ${ARCH} (Tag: ${RELEASE_TAG})...${NC}"
+curl --fail --retry 3 -sSL "${REGISTRY_URL}/nexus-installer-linux-${ARCH}" -o "${INSTALLER_BIN}"
 
-# Run the build-installer.sh
-chmod +x build-installer.sh
-./build-installer.sh
+# Download checksums and verify if sha256sum is available
+if command -v sha256sum &>/dev/null; then
+    echo -e "${BLUE}Verifying checksum...${NC}"
+    if curl --fail --retry 3 -sSL "${REGISTRY_URL}/checksums.txt" -o "${TEMP_DIR}/checksums.txt" 2>/dev/null; then
+        EXPECTED_SHA=$(grep "nexus-installer-linux-${ARCH}" "${TEMP_DIR}/checksums.txt" | cut -d' ' -f1)
+        if [ -n "$EXPECTED_SHA" ]; then
+            (cd "${TEMP_DIR}" && echo "${EXPECTED_SHA}  nexus-installer" | sha256sum -c -)
+        else
+            echo -e "${RED}Warning: Checksum for installer not found in checksums.txt. Skipping verification.${NC}"
+        fi
+    else
+        echo -e "${RED}Warning: Failed to download checksums.txt. Skipping verification.${NC}"
+    fi
+fi
 
-# Note: build-installer.sh handles cleanup of the binary, 
-# but the source in $TEMP_DIR will remain unless we clean it here.
-# However, the installer needs the source to build the engine/cli/agent.
-# So we keep it until the installer finishes.
+chmod +x "${INSTALLER_BIN}"
 
-echo -e "${GREEN}Bootstrap finished successfully.${NC}"
+echo -e "${GREEN}Launching Nexus Installer TUI...${NC}"
+"${INSTALLER_BIN}"
+
+INSTALL_STATUS=$?
+
+# Cleanup
+rm -rf "${TEMP_DIR}"
+
+if [ $INSTALL_STATUS -eq 0 ]; then
+    echo -e "${GREEN}Bootstrap finished successfully.${NC}"
+else
+    echo -e "${RED}Installer exited with error code ${INSTALL_STATUS}.${NC}"
+    exit 1
+fi
