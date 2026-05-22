@@ -316,7 +316,7 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 				break
 			}
 
-			if err := VerifyChecksum(destPath, checksumsPath); err != nil {
+			if err := VerifyChecksum(destPath, checksumsPath, artifactName); err != nil {
 				out += fmt.Sprintf("Checksum verification failed (%s): %v. Falling back to local build.\n", bin, err)
 				downloaded = false
 				break

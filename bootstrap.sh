@@ -9,6 +9,28 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Nexus OSS - One-Click Bootstrapper${NC}"
 
+# 0. Request Sudo up front
+echo -e "${BLUE}The installer requires root privileges for system configuration.${NC}"
+sudo -v
+
+# Keep-alive: update existing sudo time stamp until the script has finished
+while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+KEEPALIVE_PID=$!
+
+TEMP_DIR=$(mktemp -d)
+
+cleanup() {
+    # Terminate background keep-alive process
+    if [ -n "$KEEPALIVE_PID" ]; then
+        kill "$KEEPALIVE_PID" 2>/dev/null || true
+    fi
+    # Clean up temporary directory
+    if [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
+    fi
+}
+trap cleanup EXIT SIGINT SIGTERM
+
 # Detect architecture
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -32,7 +54,6 @@ fi
 RELEASE_TAG="${RELEASE_TAG:-latest-dev}"
 REGISTRY_URL="https://gitlab.com/api/v4/projects/abhi-vmlinuz%2Fnexus-oss/packages/generic/nexus-oss/${RELEASE_TAG}"
 
-TEMP_DIR=$(mktemp -d)
 INSTALLER_BIN="${TEMP_DIR}/nexus-installer"
 
 echo -e "${BLUE}Downloading prebuilt installer for Linux ${ARCH} (Tag: ${RELEASE_TAG})...${NC}"
@@ -42,7 +63,7 @@ curl --fail --retry 3 -sSL "${REGISTRY_URL}/nexus-installer-linux-${ARCH}" -o "$
 if command -v sha256sum &>/dev/null; then
     echo -e "${BLUE}Verifying checksum...${NC}"
     if curl --fail --retry 3 -sSL "${REGISTRY_URL}/checksums.txt" -o "${TEMP_DIR}/checksums.txt" 2>/dev/null; then
-        EXPECTED_SHA=$(grep "nexus-installer-linux-${ARCH}" "${TEMP_DIR}/checksums.txt" | cut -d' ' -f1)
+        EXPECTED_SHA=$(grep "nexus-installer-linux-${ARCH}" "${TEMP_DIR}/checksums.txt" | cut -d' ' -f1 || true)
         if [ -n "$EXPECTED_SHA" ]; then
             (cd "${TEMP_DIR}" && echo "${EXPECTED_SHA}  nexus-installer" | sha256sum -c -)
         else
@@ -56,16 +77,10 @@ fi
 chmod +x "${INSTALLER_BIN}"
 
 echo -e "${GREEN}Launching Nexus Installer TUI...${NC}"
-"${INSTALLER_BIN}"
-
-INSTALL_STATUS=$?
-
-# Cleanup
-rm -rf "${TEMP_DIR}"
-
-if [ $INSTALL_STATUS -eq 0 ]; then
+if "${INSTALLER_BIN}"; then
     echo -e "${GREEN}Bootstrap finished successfully.${NC}"
 else
-    echo -e "${RED}Installer exited with error code ${INSTALL_STATUS}.${NC}"
+    echo -e "${RED}Installer exited with error.${NC}"
+    echo -e "Please check /var/log/nexus-install.log for details."
     exit 1
 fi

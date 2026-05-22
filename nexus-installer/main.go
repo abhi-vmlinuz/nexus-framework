@@ -34,9 +34,21 @@ func main() {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	internal.GlobalOutputWriter = logWriter{program: p}
 
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
+	finalModel, err := p.Run()
+	if err != nil {
+		fmt.Printf("Alas, there's been an error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if m, ok := finalModel.(Model); ok {
+		if m.CurrentPage != PageComplete {
+			if m.InstallError != nil {
+				fmt.Fprintf(os.Stderr, "\nInstallation failed: %v\n", m.InstallError)
+			} else {
+				fmt.Fprintln(os.Stderr, "\nInstallation cancelled.")
+			}
+			os.Exit(1)
+		}
 	}
 }
 
@@ -183,6 +195,10 @@ func (m Model) handleNext() (Model, tea.Cmd) {
 			m.Spinner.Tick,
 			m.runInstallation(0),
 		)
+	case PageInstalling:
+		if m.InstallError != nil {
+			return m, tea.Quit
+		}
 	case PageComplete:
 		return m, tea.Quit
 	}

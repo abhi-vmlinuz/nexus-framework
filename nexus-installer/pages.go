@@ -154,7 +154,8 @@ func (m Model) renderInstallingPage() string {
 
 	if m.InstallError != nil {
 		sb.WriteString("\n" + StyleError.Bold(true).Render("Error: "+m.InstallError.Error()) + "\n")
-		sb.WriteString(StyleGray.Render("Check /var/log/nexus-install.log for details"))
+		sb.WriteString(StyleGray.Render("Check /var/log/nexus-install.log for details\n\n"))
+		sb.WriteString(StyleSuccess.Render("Press Enter to exit"))
 	}
 
 	return StyleBox.Render(sb.String())

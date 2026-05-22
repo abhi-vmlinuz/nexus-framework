@@ -46,7 +46,7 @@ func DownloadFile(url, dest string) error {
 }
 
 // VerifyChecksum validates a file's SHA256 against a line in checksums.txt.
-func VerifyChecksum(filePath, checksumsTxtPath string) error {
+func VerifyChecksum(filePath, checksumsTxtPath, expectedName string) error {
 	// 1. Calculate file hash
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -66,23 +66,22 @@ func VerifyChecksum(filePath, checksumsTxtPath string) error {
 		return err
 	}
 
-	fileName := strings.Split(filePath, "/")[len(strings.Split(filePath, "/"))-1]
 	lines := strings.Split(string(data), "\n")
 	
 	for _, line := range lines {
-		if strings.Contains(line, fileName) {
-			parts := strings.Fields(line)
-			if len(parts) >= 1 {
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			if parts[1] == expectedName {
 				expectedHash := parts[0]
 				if calculatedHash == expectedHash {
 					return nil
 				}
-				return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", fileName, expectedHash, calculatedHash)
+				return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", expectedName, expectedHash, calculatedHash)
 			}
 		}
 	}
 
-	return fmt.Errorf("checksum entry not found for %s", fileName)
+	return fmt.Errorf("checksum entry not found for %s", expectedName)
 }
 
 // RestoreSELinux restores SELinux contexts for the given binaries.
