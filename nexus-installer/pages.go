@@ -138,6 +138,11 @@ func (m Model) renderInstallingPage() string {
 		sb.WriteString(StyleError.Render("✘ ") + m.CurrentTask + "\n\n")
 	} else {
 		sb.WriteString(m.Spinner.View() + " " + m.CurrentTask + "\n\n")
+		if strings.Contains(m.CurrentTask, "Phase 1/") {
+			sb.WriteString(StyleGray.Render("Note: Installing system packages can take a few minutes. Please wait...") + "\n\n")
+		} else if strings.Contains(m.CurrentTask, "Phase 7/") {
+			sb.WriteString(StyleGray.Render("Note: Downloading/building binaries. This might take some time. Please wait...") + "\n\n")
+		}
 	}
 
 	if len(m.Logs) > 0 {

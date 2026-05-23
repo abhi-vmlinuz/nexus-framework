@@ -42,7 +42,7 @@ esac
 # Check for curl
 if ! command -v curl &>/dev/null; then
     echo -e "${BLUE}curl not found. Installing...${NC}"
-    if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y curl;
+    if command -v apt-get &>/dev/null; then sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y curl;
     elif command -v dnf &>/dev/null; then sudo dnf install -y curl;
     elif command -v pacman &>/dev/null; then sudo pacman -S --noconfirm --needed curl;
     elif command -v zypper &>/dev/null; then sudo zypper install -y curl;

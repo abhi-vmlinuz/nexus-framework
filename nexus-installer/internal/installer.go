@@ -119,7 +119,9 @@ func InstallPackages(backend string) (string, error) {
 		return "", fmt.Errorf("unsupported package manager")
 	}
 
-	logicalPkgs := []string{"curl", "wget", "jq", "git", "ca-certs", "iptables", "ipset", "wireguard", "golang", "rust", "cargo", "protobuf", "bash-completion"}
+	// golang, rust, cargo, protobuf are excluded to speed up server/VM installation.
+	// They will be dynamically installed in Phase 7 fallback only if prebuilt download fails.
+	logicalPkgs := []string{"curl", "wget", "jq", "git", "ca-certs", "iptables", "ipset", "wireguard", "bash-completion"}
 	if backend == "host" {
 		logicalPkgs = append(logicalPkgs, "redis")
 	}
@@ -140,7 +142,7 @@ func InstallPackages(backend string) (string, error) {
 	var cmd string
 	switch mgr {
 	case "apt":
-		cmd = fmt.Sprintf("sudo apt-get update -y && sudo apt-get install -y %s", pkgStr)
+		cmd = fmt.Sprintf("sudo DEBIAN_FRONTEND=noninteractive apt-get update -y && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y %s", pkgStr)
 	case "dnf":
 		cmd = fmt.Sprintf("sudo dnf install -y %s", pkgStr)
 	case "yum":
@@ -152,6 +154,45 @@ func InstallPackages(backend string) (string, error) {
 	}
 
 	return RunCommand(cmd)
+}
+
+// InstallCompilers installs compilers needed for local build fallback.
+func InstallCompilers() error {
+	mgr := detectPkgManager()
+	if mgr == "unknown" {
+		return fmt.Errorf("unsupported package manager")
+	}
+
+	logicalPkgs := []string{"golang", "rust", "cargo", "protobuf"}
+	var resolved []string
+	for _, lp := range logicalPkgs {
+		p := resolvePkg(mgr, lp)
+		if p != "" {
+			resolved = append(resolved, p)
+		}
+	}
+
+	pkgStr := ""
+	for _, p := range resolved {
+		pkgStr += p + " "
+	}
+
+	var cmd string
+	switch mgr {
+	case "apt":
+		cmd = fmt.Sprintf("sudo DEBIAN_FRONTEND=noninteractive apt-get install -y %s", pkgStr)
+	case "dnf":
+		cmd = fmt.Sprintf("sudo dnf install -y %s", pkgStr)
+	case "yum":
+		cmd = fmt.Sprintf("sudo yum install -y %s", pkgStr)
+	case "pacman":
+		cmd = fmt.Sprintf("sudo pacman -S --noconfirm --needed %s", pkgStr)
+	case "zypper":
+		cmd = fmt.Sprintf("sudo zypper install -y %s", pkgStr)
+	}
+
+	_, err := RunCommand(cmd)
+	return err
 }
 
 // InstallK3s handles Phase 2
@@ -337,6 +378,10 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 	} else {
 		// ── Fallback: Local Build ─────────────────────────────────────────────
 		out += "Starting local build fallback...\n"
+		out += "Installing required compiler packages (Go, Rust, Protobuf) for local compilation...\n"
+		if err := InstallCompilers(); err != nil {
+			return out, fmt.Errorf("failed to install compilers: %w", err)
+		}
 
 		// Paths
 		enginePath := filepath.Join(repoRoot, "nexus-engine")
