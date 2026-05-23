@@ -544,14 +544,32 @@ func SetupShellCompletion(home string) (string, error) {
 
 	var profile, cmd string
 	if strings.Contains(shell, "bash") {
+		// Try system-wide bash completion first
+		if _, err := RunCommand("sudo mkdir -p /etc/bash_completion.d"); err == nil {
+			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion bash > /etc/bash_completion.d/nexus'"); err == nil {
+				return "Shell completion installed system-wide in /etc/bash_completion.d/nexus", nil
+			}
+		}
 		profile = filepath.Join(home, ".bashrc")
 		cmd = "\n# Nexus CLI completion\n# Ensure bash-completion is sourced\n" +
 			"[ -r /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion\n" +
 			"source <(nexus completion bash)\n"
 	} else if strings.Contains(shell, "zsh") {
+		// Try system-wide zsh completion first
+		if _, err := RunCommand("sudo mkdir -p /usr/share/zsh/vendor-completions"); err == nil {
+			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion zsh > /usr/share/zsh/vendor-completions/_nexus'"); err == nil {
+				return "Shell completion installed system-wide in /usr/share/zsh/vendor-completions/_nexus", nil
+			}
+		}
 		profile = filepath.Join(home, ".zshrc")
 		cmd = "\n# Nexus CLI completion\nsource <(nexus completion zsh)\n"
 	} else if strings.Contains(shell, "fish") {
+		// Try system-wide fish completion first
+		if _, err := RunCommand("sudo mkdir -p /usr/share/fish/vendor_completions.d"); err == nil {
+			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion fish > /usr/share/fish/vendor_completions.d/nexus.fish'"); err == nil {
+				return "Shell completion installed system-wide in /usr/share/fish/vendor_completions.d/nexus.fish", nil
+			}
+		}
 		profile = filepath.Join(home, ".config/fish/config.fish")
 		cmd = "\n# Nexus CLI completion\nnexus completion fish | source\n"
 	} else {
