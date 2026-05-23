@@ -40,28 +40,7 @@ Nexus OSS is a control plane for running containerized CTF (Capture The Flag) ch
 
 ## Architecture
 
-```
-                 ┌─────────────────────────────────────────┐
-                 │              Operator (you)             │
-                 │           nexus tui / nexus CLI         │
-                 └────────────────┬────────────────────────┘
-                                  │ HTTP REST
-                 ┌────────────────▼─────────────────────────┐
-                 │            nexus-engine                  │
-                 │  Gin · Redis State · K3s Controller      │
-                 └───────┬──────────────┬───────────────────┘
-                         │ gRPC         │ Kubernetes API
-          ┌──────────────▼────┐    ┌─────▼─────────────────┐
-          │  nexus-node-agent │    │         k3s           │
-          │  (Rust, privd)    │    │  nexus-challenges NS  │
-          │  ipset · WireGuard│    │  Challenge Pods/Svcs  │
-          └───────────────────┘    └───────────────────────┘
-                         │
-          ┌──────────────▼───────────┐
-          │   Container Registry     │
-          │  local:5000 / GHCR / Hub │
-          └──────────────────────────┘
-```
+![Nexus Architecture](assets/diagram.png)
 
 ---
 
