@@ -523,6 +523,8 @@ Restart=on-failure
 RestartSec=5
 EnvironmentFile=-/etc/nexus/engine.env
 Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+Environment=CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock
+Environment=CONTAINERD_NAMESPACE=k8s.io
 
 [Install]
 WantedBy=multi-user.target`)
