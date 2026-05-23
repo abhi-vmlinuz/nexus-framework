@@ -227,6 +227,7 @@ func InstallNerdctl(user string) (string, error) {
 		}
 		out += o
 	}
+	RunCommand("sudo ln -sf /usr/local/bin/nerdctl /usr/bin/nerdctl")
 	RunCommand(fmt.Sprintf("sudo groupadd -f nexus && sudo usermod -aG nexus %s", user))
 	o2, err := RunCommand("sudo chown root:nexus /run/k3s/containerd/containerd.sock && sudo chmod 660 /run/k3s/containerd/containerd.sock")
 	out += o2
@@ -410,6 +411,11 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 		out += "Nexus Node Agent built and installed locally\n"
 	}
 
+	// Create symlinks in /usr/bin to resolve sudo secure_path issues on RHEL/CentOS/Rocky
+	for _, bin := range binaries {
+		RunCommand(fmt.Sprintf("sudo ln -sf /usr/local/bin/%s /usr/bin/%s", bin, bin))
+	}
+
 	// Restore SELinux contexts
 	RestoreSELinux([]string{"/usr/local/bin/nexus", "/usr/local/bin/nexus-engine", "/usr/local/bin/nexus-node-agent"})
 
@@ -544,7 +550,13 @@ func SetupShellCompletion(home string) (string, error) {
 
 	var profile, cmd string
 	if strings.Contains(shell, "bash") {
-		// Try system-wide bash completion first
+		// Try modern system-wide bash completion first
+		if _, err := RunCommand("sudo mkdir -p /usr/share/bash-completion/completions"); err == nil {
+			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion bash > /usr/share/bash-completion/completions/nexus'"); err == nil {
+				return "Shell completion installed system-wide in /usr/share/bash-completion/completions/nexus", nil
+			}
+		}
+		// Try legacy system-wide bash completion
 		if _, err := RunCommand("sudo mkdir -p /etc/bash_completion.d"); err == nil {
 			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion bash > /etc/bash_completion.d/nexus'"); err == nil {
 				return "Shell completion installed system-wide in /etc/bash_completion.d/nexus", nil
