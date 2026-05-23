@@ -172,7 +172,8 @@ func (m Model) renderCompletePage() string {
 	if m.RedisBackend == "nerdctl" {
 		redisTip = "\n\nOperational Tip:\n  To manage the Redis container, use:\n  sudo nerdctl --address /run/k3s/containerd/containerd.sock ps"
 	}
-	body := fmt.Sprintf("\nNexus OSS is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json%s\n\nPress Enter to exit", m.EnginePort, m.AgentPort, redisTip)
+	completionTip := "\n\nShell Completion:\n  System completions installed. To activate in current session:\n  source /usr/share/bash-completion/completions/nexus (or reload shell)"
+	body := fmt.Sprintf("\nNexus OSS is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json%s%s\n\nPress Enter to exit", m.EnginePort, m.AgentPort, redisTip, completionTip)
 
 	return StyleBox.Render(lipgloss.JoinVertical(lipgloss.Center, title, body))
 }

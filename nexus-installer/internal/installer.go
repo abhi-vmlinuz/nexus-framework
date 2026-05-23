@@ -540,75 +540,66 @@ WantedBy=multi-user.target`)
 
 // SetupShellCompletion adds the nexus completion command to the user's shell profile.
 func SetupShellCompletion(home string) (string, error) {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		// Fallback to checking /etc/passwd if SHELL env is missing
-		if out, err := RunCommand("getent passwd $(whoami) | cut -d: -f7"); err == nil {
-			shell = strings.TrimSpace(out)
-		}
-	}
+	var summary []string
 
-	var profile, cmd string
-	if strings.Contains(shell, "bash") {
-		// Try modern system-wide bash completion first
-		if _, err := RunCommand("sudo mkdir -p /usr/share/bash-completion/completions"); err == nil {
-			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion bash > /usr/share/bash-completion/completions/nexus'"); err == nil {
-				return "Shell completion installed system-wide in /usr/share/bash-completion/completions/nexus", nil
+	// 1. Bash Completion
+	if bashScript, err := RunCommand("/usr/local/bin/nexus completion bash"); err == nil && len(strings.TrimSpace(bashScript)) > 100 {
+		tmpFile := "/tmp/nexus-completion-bash"
+		if err := os.WriteFile(tmpFile, []byte(bashScript), 0644); err == nil {
+			// Try modern path first
+			if _, err := RunCommand("sudo mkdir -p /usr/share/bash-completion/completions"); err == nil {
+				if _, err := RunCommand(fmt.Sprintf("sudo mv %s /usr/share/bash-completion/completions/nexus && sudo chmod 644 /usr/share/bash-completion/completions/nexus", tmpFile)); err == nil {
+					summary = append(summary, "Bash (system-wide)")
+				}
 			}
-		}
-		// Try legacy system-wide bash completion
-		if _, err := RunCommand("sudo mkdir -p /etc/bash_completion.d"); err == nil {
-			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion bash > /etc/bash_completion.d/nexus'"); err == nil {
-				return "Shell completion installed system-wide in /etc/bash_completion.d/nexus", nil
+			// Try legacy fallback if modern path was not written
+			if len(summary) == 0 {
+				if _, err := RunCommand("sudo mkdir -p /etc/bash_completion.d"); err == nil {
+					if _, err := RunCommand(fmt.Sprintf("sudo mv %s /etc/bash_completion.d/nexus && sudo chmod 644 /etc/bash_completion.d/nexus", tmpFile)); err == nil {
+						summary = append(summary, "Bash (legacy)")
+					}
+				}
 			}
+			os.Remove(tmpFile) // Clean up temp file if still there
 		}
-		profile = filepath.Join(home, ".bashrc")
-		cmd = "\n# Nexus CLI completion\n# Ensure bash-completion is sourced\n" +
-			"[ -r /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion\n" +
-			"source <(nexus completion bash)\n"
-	} else if strings.Contains(shell, "zsh") {
-		// Try system-wide zsh completion first
-		if _, err := RunCommand("sudo mkdir -p /usr/share/zsh/vendor-completions"); err == nil {
-			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion zsh > /usr/share/zsh/vendor-completions/_nexus'"); err == nil {
-				return "Shell completion installed system-wide in /usr/share/zsh/vendor-completions/_nexus", nil
+	} else if err != nil {
+		// Log error
+		RunCommand(fmt.Sprintf("echo 'Bash completion generation failed: %s' | sudo tee -a /var/log/nexus-install.log > /dev/null", strings.ReplaceAll(err.Error(), "'", "'\\''")))
+	}
+
+	// 2. Zsh Completion
+	if zshScript, err := RunCommand("/usr/local/bin/nexus completion zsh"); err == nil && len(strings.TrimSpace(zshScript)) > 100 {
+		tmpFile := "/tmp/nexus-completion-zsh"
+		if err := os.WriteFile(tmpFile, []byte(zshScript), 0644); err == nil {
+			if _, err := RunCommand("sudo mkdir -p /usr/share/zsh/vendor-completions"); err == nil {
+				if _, err := RunCommand(fmt.Sprintf("sudo mv %s /usr/share/zsh/vendor-completions/_nexus && sudo chmod 644 /usr/share/zsh/vendor-completions/_nexus", tmpFile)); err == nil {
+					summary = append(summary, "Zsh (system-wide)")
+				}
 			}
+			os.Remove(tmpFile)
 		}
-		profile = filepath.Join(home, ".zshrc")
-		cmd = "\n# Nexus CLI completion\nsource <(nexus completion zsh)\n"
-	} else if strings.Contains(shell, "fish") {
-		// Try system-wide fish completion first
-		if _, err := RunCommand("sudo mkdir -p /usr/share/fish/vendor_completions.d"); err == nil {
-			if _, err := RunCommand("sudo sh -c '/usr/local/bin/nexus completion fish > /usr/share/fish/vendor_completions.d/nexus.fish'"); err == nil {
-				return "Shell completion installed system-wide in /usr/share/fish/vendor_completions.d/nexus.fish", nil
+	} else if err != nil {
+		RunCommand(fmt.Sprintf("echo 'Zsh completion generation failed: %s' | sudo tee -a /var/log/nexus-install.log > /dev/null", strings.ReplaceAll(err.Error(), "'", "'\\''")))
+	}
+
+	// 3. Fish Completion
+	if fishScript, err := RunCommand("/usr/local/bin/nexus completion fish"); err == nil && len(strings.TrimSpace(fishScript)) > 100 {
+		tmpFile := "/tmp/nexus-completion-fish"
+		if err := os.WriteFile(tmpFile, []byte(fishScript), 0644); err == nil {
+			if _, err := RunCommand("sudo mkdir -p /usr/share/fish/vendor_completions.d"); err == nil {
+				if _, err := RunCommand(fmt.Sprintf("sudo mv %s /usr/share/fish/vendor_completions.d/nexus.fish && sudo chmod 644 /usr/share/fish/vendor_completions.d/nexus.fish", tmpFile)); err == nil {
+					summary = append(summary, "Fish (system-wide)")
+				}
 			}
+			os.Remove(tmpFile)
 		}
-		profile = filepath.Join(home, ".config/fish/config.fish")
-		cmd = "\n# Nexus CLI completion\nnexus completion fish | source\n"
-	} else {
-		return "Unsupported shell for automatic completion setup. Manual setup: nexus completion [shell]", nil
+	} else if err != nil {
+		RunCommand(fmt.Sprintf("echo 'Fish completion generation failed: %s' | sudo tee -a /var/log/nexus-install.log > /dev/null", strings.ReplaceAll(err.Error(), "'", "'\\''")))
 	}
 
-	// Check if already exists
-	content, _ := os.ReadFile(profile)
-	if strings.Contains(string(content), "nexus completion") {
-		return "Shell completion already configured in " + profile, nil
+	if len(summary) > 0 {
+		return fmt.Sprintf("Shell completions installed system-wide: %s", strings.Join(summary, ", ")), nil
 	}
 
-	// Append to profile
-	f, err := os.OpenFile(profile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return "", fmt.Errorf("failed to open shell profile: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(cmd); err != nil {
-		return "", fmt.Errorf("failed to write to shell profile: %w", err)
-	}
-
-	// Fix ownership if under sudo
-	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
-		RunCommand(fmt.Sprintf("chown %s:%s %s", sudoUser, sudoUser, profile))
-	}
-
-	return "Shell completion configured in " + profile, nil
+	return "No shell completions were installed (framework directories missing or generation failed)", nil
 }
