@@ -20,7 +20,7 @@ dist/
 # Env
 .env
 .env.*
-
+history.md
 # Logs
 *.log
 
