@@ -219,7 +219,7 @@ func InstallNerdctl(user string) (string, error) {
 		}
 		cmd := fmt.Sprintf(`NV="1.7.6"; NA="%s"; TMPDIR=$(mktemp -d); 
 		curl -fsSL "https://github.com/containerd/nerdctl/releases/download/v${NV}/nerdctl-full-${NV}-linux-${NA}.tar.gz" -o "$TMPDIR/nerdctl.tar.gz";
-		sudo tar -xzf "$TMPDIR/nerdctl.tar.gz" -C /usr/local;
+		sudo tar -xzf "$TMPDIR/nerdctl.tar.gz" -C /usr/local bin/nerdctl;
 		rm -rf "$TMPDIR"`, arch)
 		o, err := RunCommand(cmd)
 		if err != nil {
@@ -458,7 +458,50 @@ func WriteConfigFile(home string, conf Config) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "Configuration written to " + filepath.Join(dir, "config.json"), nil
+
+	// Change ownership of the target user's config directory to the non-root user
+	user := os.Getenv("USER")
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+		user = sudoUser
+	}
+	RunCommand(fmt.Sprintf("sudo chown -R %s:%s %s", user, user, dir))
+
+	// If running as root, and the target home is not /root, also write to /root for convenience
+	if os.Getuid() == 0 && home != "/root" {
+		rootDir := "/root/.config/nexus"
+		if err := os.MkdirAll(rootDir, 0700); err == nil {
+			_ = os.WriteFile(filepath.Join(rootDir, "config.json"), []byte(content), 0600)
+		}
+	}
+
+	// Also write the system-wide environment configuration for the systemd services
+	etcDir := "/etc/nexus"
+	if err := os.MkdirAll(etcDir, 0755); err != nil {
+		return "", err
+	}
+
+	insecure := "true"
+	if conf.Mode == "prod" {
+		insecure = "false"
+	}
+
+	envContent := fmt.Sprintf(`NEXUS_MODE=%s
+NEXUS_PORT=%s
+NEXUS_REDIS_URL=%s
+NEXUS_K3S_NAMESPACE=%s
+NEXUS_REGISTRY_URL=%s
+NEXUS_REGISTRY_AUTH_TYPE=%s
+NEXUS_REGISTRY_AUTH_USERNAME=%s
+NEXUS_REGISTRY_AUTH_PASSWORD=%s
+NEXUS_NODE_AGENT_ADDR=%s
+NEXUS_NODE_AGENT_INSECURE=%s
+`, conf.Mode, conf.EnginePort, conf.RedisURL, conf.K8sNamespace, conf.RegistryURL, conf.RegistryType, conf.RegistryUser, conf.RegistryPass, conf.NodeAgentAddr, insecure)
+
+	if err := os.WriteFile(filepath.Join(etcDir, "engine.env"), []byte(envContent), 0600); err != nil {
+		return "", err
+	}
+
+	return "Configuration written to " + filepath.Join(dir, "config.json") + " and " + filepath.Join(etcDir, "engine.env"), nil
 }
 
 // SetupMTLSCertificates handles mTLS generation
@@ -505,6 +548,9 @@ Restart=on-failure
 Environment=NEXUS_MODE=%s
 Environment=NODE_AGENT_LISTEN_ADDR=0.0.0.0:50051
 Environment=NODE_AGENT_INSECURE=%s
+Environment=NODE_AGENT_TLS_CERT=/etc/nexus/agent-server.crt
+Environment=NODE_AGENT_TLS_KEY=/etc/nexus/agent-server.key
+Environment=NODE_AGENT_CA_CERT=/etc/nexus/ca.crt
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
 

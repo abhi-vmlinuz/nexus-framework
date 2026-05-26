@@ -343,7 +343,7 @@ if ! command -v nerdctl &>/dev/null; then
   TMPDIR=$(mktemp -d)
   curl -fsSL "https://github.com/containerd/nerdctl/releases/download/v${NV}/nerdctl-full-${NV}-linux-${NA}.tar.gz" \
     -o "$TMPDIR/nerdctl.tar.gz"
-  tar -xzf "$TMPDIR/nerdctl.tar.gz" -C /usr/local
+  tar -xzf "$TMPDIR/nerdctl.tar.gz" -C /usr/local bin/nerdctl
   rm -rf "$TMPDIR"
 fi
 ok "nerdctl: $(nerdctl --version)"
