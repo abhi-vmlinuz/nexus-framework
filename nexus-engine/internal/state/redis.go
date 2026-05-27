@@ -8,6 +8,8 @@
 //	active_sessions          → set of session IDs
 //	user_sessions:<user_id>  → set of session IDs
 //	grant:pod:<pod_ip>       → GrantRecord JSON
+//	vpn:<user_id>            → VPNConfig JSON (no expiry)
+//	vpn_ips                  → set of allocated VPN IPs (10.8.0.x)
 package state
 
 import (
@@ -434,3 +436,73 @@ func (s *Store) GetGrant(podIP string) (GrantRecord, error) {
 func (s *Store) DeleteGrant(podIP string) error {
 	return s.client.Del(s.ctx, fmt.Sprintf("grant:pod:%s", podIP)).Err()
 }
+
+// ─── VPN operations ───────────────────────────────────────────────────────────
+
+// VPNConfig holds the per-user WireGuard configuration stored in Redis.
+type VPNConfig struct {
+	UserID     string `json:"user_id"`
+	PublicKey  string `json:"public_key"`
+	PrivateKey string `json:"private_key"`
+	VPNip      string `json:"vpn_ip"`
+}
+
+// GetVPNConfig retrieves the VPN config for a user. Returns nil, nil when not found.
+func (s *Store) GetVPNConfig(userID string) (*VPNConfig, error) {
+	data, err := s.client.Get(s.ctx, fmt.Sprintf("vpn:%s", userID)).Result()
+	if err == redis.Nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var cfg VPNConfig
+	if err := json.Unmarshal([]byte(data), &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// SetVPNConfig persists a VPN config and records the allocated IP.
+func (s *Store) SetVPNConfig(cfg *VPNConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := s.client.Set(s.ctx, fmt.Sprintf("vpn:%s", cfg.UserID), data, 0).Err(); err != nil {
+		return fmt.Errorf("set vpn config: %w", err)
+	}
+	// Track allocated IPs so GetNextAvailableVPNIP can skip them.
+	s.client.SAdd(s.ctx, "vpn_ips", cfg.VPNip)
+	return nil
+}
+
+// DeleteVPNConfig removes a user's VPN config and frees their IP.
+func (s *Store) DeleteVPNConfig(userID string) error {
+	cfg, err := s.GetVPNConfig(userID)
+	if err == nil && cfg != nil {
+		s.client.SRem(s.ctx, "vpn_ips", cfg.VPNip)
+	}
+	return s.client.Del(s.ctx, fmt.Sprintf("vpn:%s", userID)).Err()
+}
+
+// GetNextAvailableVPNIP returns the next free IP in 10.8.0.2-10.8.0.254.
+// Returns an error if the pool is exhausted (253 concurrent users).
+func (s *Store) GetNextAvailableVPNIP() (string, error) {
+	allocated, err := s.client.SMembers(s.ctx, "vpn_ips").Result()
+	if err != nil {
+		return "", fmt.Errorf("read vpn_ips set: %w", err)
+	}
+	used := make(map[string]bool, len(allocated))
+	for _, ip := range allocated {
+		used[ip] = true
+	}
+	for i := 2; i <= 254; i++ {
+		candidate := fmt.Sprintf("10.8.0.%d", i)
+		if !used[candidate] {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("VPN IP pool exhausted (253/253 addresses in use)")
+}
+
