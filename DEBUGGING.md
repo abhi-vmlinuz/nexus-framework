@@ -43,3 +43,22 @@ If the Metrics tab shows "Node Agent RPC errors":
 - **Solution**: 
   - Ensure the agent is running: `sudo systemctl status nexus-node-agent`
   - Verify the agent address in the engine service is set to `127.0.0.1:50051`.
+
+## 6. Docker Container Runtime Crashes (time namespace errors)
+
+If you run `docker run` or `docker compose` and get an error like:
+`OCI runtime create failed: runc create failed: namespace {"time" ""} does not exist`
+- **Cause**: Newer Docker CE versions (26.0+) enable private time namespaces by default. If your host kernel does not support time namespaces (common on some cloud VM kernels), the container startup fails.
+- **Solution**: Disable time namespaces in your Docker daemon configuration:
+  1. Edit `/etc/docker/daemon.json` and add:
+     ```json
+     {
+       "features": {
+         "time-namespaces": false
+       }
+     }
+     ```
+  2. Restart the Docker service:
+     ```bash
+     sudo systemctl restart docker
+     ```
