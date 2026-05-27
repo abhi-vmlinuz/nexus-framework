@@ -196,7 +196,7 @@ func newConfigCmd(makeClient func() *client.Client) *cobra.Command {
 			fmt.Printf("\n--- REMOTE ENGINE CONFIGURATION (Hot-Reloadable) ---\n")
 			engineCfg, err := c.GetEngineConfig()
 			if err != nil {
-				fmt.Printf("  ⚠️  Engine unreachable: %v\n", err)
+				fmt.Printf("  [!] Engine unreachable: %v\n", err)
 				fmt.Printf("  (Verify engine is running and engine.url is correct in CLI config)\n")
 			} else {
 				// Display Engine Config (Soft + Hard)

@@ -179,7 +179,7 @@ func (c *Controller) enqueue(sessionID, reason string) {
 		c.mu.Lock()
 		delete(c.queued, sessionID)
 		c.mu.Unlock()
-		log.Printf("⚠️  controller queue full, dropped reconcile for session=%s reason=%s", sessionID, reason)
+		log.Printf("[WARN] controller queue full, dropped reconcile for session=%s reason=%s", sessionID, reason)
 	}
 }
 
@@ -197,10 +197,10 @@ func (c *Controller) workerLoop(workerID int) {
 		metricCyclesTotal.Inc()
 
 		if err := c.reconcileSession(job); err != nil {
-			log.Printf("❌ reconcile failed | worker=%d session=%s reason=%s err=%v",
+			log.Printf("[ERROR] reconcile failed | worker=%d session=%s reason=%s err=%v",
 				workerID, job.sessionID, job.reason, err)
 			if markErr := c.store.MarkReconcileFailure(job.sessionID, err.Error()); markErr != nil {
-				log.Printf("⚠️  mark failure error: %v", markErr)
+				log.Printf("[WARN] mark failure error: %v", markErr)
 			}
 			backoff := c.backoff
 			if backoff > maxBackoff {
@@ -220,13 +220,13 @@ func (c *Controller) workerLoop(workerID int) {
 func (c *Controller) bootstrapLoop() {
 	sessions, err := c.store.ListActiveSessions()
 	if err != nil {
-		log.Printf("⚠️  controller bootstrap failed: %v", err)
+		log.Printf("[WARN] controller bootstrap failed: %v", err)
 		return
 	}
 	for _, sess := range sessions {
 		c.enqueue(sess.ID, "startup_bootstrap")
 	}
-	log.Printf("🔁 Controller bootstrapped %d sessions", len(sessions))
+	log.Printf("[INFO] Controller bootstrapped %d sessions", len(sessions))
 }
 
 func (c *Controller) periodicLoop() {
@@ -236,7 +236,7 @@ func (c *Controller) periodicLoop() {
 
 		sessions, err := c.store.ListActiveSessions()
 		if err != nil {
-			log.Printf("⚠️  periodic scan failed: %v", err)
+			log.Printf("[WARN] periodic scan failed: %v", err)
 			continue
 		}
 		for _, sess := range sessions {
@@ -251,12 +251,12 @@ func (c *Controller) cleanupLoop() {
 	for range ticker.C {
 		deleted, err := c.k8s.CleanupOrphanedPods()
 		if err != nil {
-			log.Printf("⚠️  cleanup loop error: %v", err)
-			continue
-		}
-		if deleted > 0 {
-			log.Printf("🧹 Cleanup removed %d orphaned pods", deleted)
-		}
+				log.Printf("[WARN] cleanup loop error: %v", err)
+				continue
+			}
+			if deleted > 0 {
+				log.Printf("[INFO] Cleanup removed %d orphaned pods", deleted)
+			}
 	}
 }
 
@@ -298,7 +298,7 @@ func (c *Controller) reconcileSession(job reconcileJob) error {
 		return fmt.Errorf("mark success: %w", err)
 	}
 
-	log.Printf("✅ reconciled session=%s status=%s duration=%s reason=%s",
+	log.Printf("[OK] reconciled session=%s status=%s duration=%s reason=%s",
 		sess.ID, sess.Status, time.Since(start).Round(time.Millisecond), job.reason)
 	return nil
 }
@@ -312,7 +312,7 @@ func (c *Controller) reconcileRunning(sess state.Session) error {
 
 	// Check TTL expiry.
 	if time.Now().After(sess.ExpiresAt) {
-		log.Printf("🕐 session %s expired, marking for termination", sess.ID)
+		log.Printf("[INFO] session %s expired, marking for termination", sess.ID)
 		sess.Status = "expired"
 		c.store.UpdateSession(sess)
 		c.enqueue(sess.ID, "ttl_expired")
@@ -320,7 +320,7 @@ func (c *Controller) reconcileRunning(sess state.Session) error {
 	}
 
 	if podStatus == "not_found" || podStatus == "Failed" || podStatus == "Succeeded" {
-		log.Printf("⚠️  session %s pod missing or crashed (status=%s), marking failed", sess.ID, podStatus)
+		log.Printf("[WARN] session %s pod missing or crashed (status=%s), marking failed", sess.ID, podStatus)
 		sess.Status = "failed"
 		c.store.UpdateSession(sess)
 		metricRepairsTotal.Inc()
@@ -361,14 +361,14 @@ func (c *Controller) reconcileTerminal(sess state.Session) error {
 		if err := c.agent.RevokePodAccess(ctx, sess.UserID, sess.PodIP); err != nil {
 			if !isMissingClientErr(err) {
 				metricRPCErrors.Inc()
-				log.Printf("⚠️  reconcile RevokePodAccess: %v", err)
+				log.Printf("[WARN] reconcile RevokePodAccess: %v", err)
 			}
 		}
 		if sess.VpnIP != "" {
 			if err := c.agent.RevokeUserIsolation(ctx, sess.UserID, sess.VpnIP); err != nil {
 				if !isMissingClientErr(err) {
 					metricRPCErrors.Inc()
-					log.Printf("⚠️  reconcile RevokeUserIsolation: %v", err)
+					log.Printf("[WARN] reconcile RevokeUserIsolation: %v", err)
 				}
 			}
 		}
@@ -377,7 +377,7 @@ func (c *Controller) reconcileTerminal(sess state.Session) error {
 
 	// Best-effort pod deletion (may already be gone).
 	if err := c.k8s.TerminatePod(sess.ID); err != nil {
-		log.Printf("⚠️  reconcile TerminatePod(%s): %v", sess.ID, err)
+		log.Printf("[WARN] reconcile TerminatePod(%s): %v", sess.ID, err)
 	}
 
 	// FINAL STEP: Remove from Redis entirely so it stops appearing in active lists.

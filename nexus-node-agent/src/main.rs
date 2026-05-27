@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     if cfg.insecure {
-        info!("⚠️  mTLS disabled (insecure mode — dev only)");
+        info!("WARNING: mTLS disabled (insecure mode — dev only)");
         Server::builder()
             .add_service(NodeAgentServiceServer::new(service))
             .serve_with_shutdown(addr, shutdown_signal())
@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
             .identity(identity)
             .client_ca_root(ca_cert);
 
-        info!("🔒 mTLS enabled");
+        info!("mTLS enabled");
         Server::builder()
             .tls_config(tls)
             .context("TLS config failed")?

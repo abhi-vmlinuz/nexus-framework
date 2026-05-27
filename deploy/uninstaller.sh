@@ -9,9 +9,9 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
 
 info() { echo -e "${GREEN}→${NC} $*"; }
-warn() { echo -e "${YELLOW}⚠  $*${NC}"; }
-die()  { echo -e "${RED}✗  $*${NC}" >&2; exit 1; }
-ok()   { echo -e "${GREEN}✅ $*${NC}"; }
+warn() { echo -e "${YELLOW}[WARN] $*${NC}"; }
+die()  { echo -e "${RED}[FAIL] $*${NC}" >&2; exit 1; }
+ok()   { echo -e "${GREEN}[OK] $*${NC}"; }
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash uninstaller.sh"
 

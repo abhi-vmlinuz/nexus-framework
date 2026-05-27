@@ -30,9 +30,9 @@ echo -e "\033[0;90m  Initializing infrastructure and runtime components\033[0m\n
 }
 
 info()   { echo -e "${GREEN}→${NC} $*"; }
-warn()   { echo -e "${YELLOW}⚠  $*${NC}"; }
-die()    { echo -e "${RED}✗  $*${NC}" >&2; exit 1; }
-ok()     { echo -e "${GREEN}✅ $*${NC}"; }
+warn()   { echo -e "${YELLOW}[WARN] $*${NC}"; }
+die()    { echo -e "${RED}[FAIL] $*${NC}" >&2; exit 1; }
+ok()     { echo -e "${GREEN}[OK] $*${NC}"; }
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash setup.sh"
 
