@@ -118,10 +118,13 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 			}
 		}
 
+		env := parseComposeEnv(svc.Environment)
+
 		spec := state.ContainerSpec{
 			Name:  svcName,
 			Image: imageRef,
 			Ports: ports,
+			Env:   env,
 		}
 
 		// Convert Resources
@@ -205,6 +208,38 @@ func parseComposePorts(raw []string) ([]int, error) {
 		ports = append(ports, p)
 	}
 	return ports, nil
+}
+
+// parseComposeEnv extracts environment variables from a compose service.
+// Supports both map format (KEY: value) and list format (KEY=value).
+func parseComposeEnv(node yaml.Node) map[string]string {
+	env := make(map[string]string)
+	if node.Kind == 0 {
+		return env
+	}
+
+	// Map format: environment: {KEY: value}
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content)-1; i += 2 {
+			key := node.Content[i].Value
+			val := node.Content[i+1].Value
+			env[key] = val
+		}
+		return env
+	}
+
+	// List format: environment: [KEY=value]
+	if node.Kind == yaml.SequenceNode {
+		for _, item := range node.Content {
+			parts := strings.SplitN(item.Value, "=", 2)
+			if len(parts) == 2 {
+				env[parts[0]] = parts[1]
+			}
+		}
+		return env
+	}
+
+	return env
 }
 
 func parseHealthCheck(hc *composeHealth) *state.ReadinessProbe {
