@@ -47,6 +47,10 @@ rm -f /usr/local/bin/nexus-node-agent
 rm -f /usr/local/bin/nerdctl
 rm -f /usr/local/bin/buildkitd
 rm -f /usr/local/bin/buildctl
+# Remove any manual containerd/runc duplicates left over from older installations
+rm -f /usr/local/sbin/runc
+rm -f /usr/local/bin/containerd
+rm -f /usr/local/bin/containerd-shim-runc-v2
 ok "Binaries removed"
 
 # 3. Clean up WireGuard
