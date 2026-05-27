@@ -94,6 +94,22 @@ A full-screen TUI installer written in Go using Bubbletea. Replaces the legacy `
 
 > **SELinux Note (Fedora/RHEL)**: The installer and engine automatically handle SELinux contexts for all managed binaries and services.
 
+### Cloud / AWS Deployment (Required Firewall Rules)
+
+When running Nexus on a cloud VM (AWS EC2, GCP, etc.) the following **inbound ports must be open** in your security group / firewall. These are permanent requirements — not one-time setup:
+
+| Port | Protocol | Required For | Scope |
+|------|----------|-------------|-------|
+| **8081** | TCP | Nexus Engine REST API (CLI, CTF platform) | Your IP or `0.0.0.0/0` |
+| **51820** | **UDP** | **WireGuard VPN — student tunnel handshake** | `0.0.0.0/0` |
+| **50051** | TCP | Node Agent gRPC (localhost only — do not expose) | `127.0.0.1` only |
+
+> [!IMPORTANT]
+> **Port 51820/UDP is the most commonly missed rule.** Without it, WireGuard peers can never complete a handshake. Symptoms: `ping 10.8.0.1` 100% packet loss, `wg show wg0 latest-handshakes` shows `0` for all peers. Adding the inbound UDP rule is the fix.
+
+> [!NOTE]
+> **Port 50051 must NOT be publicly exposed.** The node agent accepts privileged gRPC commands (WireGuard peer management, iptables rules) and is designed for localhost-only communication with the engine via mTLS.
+
 ---
 
 ## Installation
@@ -186,6 +202,7 @@ All configuration values can be overridden with environment variables:
 | `NEXUS_NODE_AGENT_ADDR` | `localhost:50051` | Node agent gRPC address |
 | `NEXUS_K3S_NAMESPACE` | `nexus-challenges` | Kubernetes namespace |
 | `NEXUS_ENGINE_URL` | `http://localhost:8081` | Used by the CLI to reach the engine |
+| `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `13.233.126.78:51820` |
 | `KUBECONFIG` | `/etc/rancher/k3s/k3s.yaml` | K3s kubeconfig path |
 
 ### Modes
@@ -196,9 +213,12 @@ All configuration values can be overridden with environment variables:
 - Ideal for local development and testing
 
 **`prod` mode**:
-- WireGuard VPN is enabled on `wg0` (`10.8.0.1/24`, port `51820`)
+- WireGuard VPN is enabled on `wg0` (`10.8.0.1/24`, port `51820/UDP`)
 - `ipset`/`iptables` rules are enforced per session
 - Systemd services run with `CAP_NET_ADMIN` capabilities
+- **Requires** `NEXUS_WG_ENDPOINT` env var set to `<public_ip>:51820`
+- **Requires** inbound UDP 51820 open in your firewall/security group
+- Generated VPN configs are **split-tunnel** (`AllowedIPs = 10.8.0.0/24` only) — internet traffic is NOT routed through the VPN, preserving normal connectivity for students
 
 ---
 

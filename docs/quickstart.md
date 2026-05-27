@@ -8,6 +8,7 @@
 - Root access
 - 2 CPU / 2 GB RAM minimum
 - Internet access (for k3s install + image pulls)
+- **Cloud VMs (AWS/GCP):** Open inbound **TCP 8081** (Engine API) and **UDP 51820** (WireGuard VPN) in your security group. These are permanent — see [DEBUGGING.md](../DEBUGGING.md#7-wireguard-vpn--no-handshake) if the VPN won't connect.
 
 ---
 
@@ -99,6 +100,9 @@ nexus session create --challenge hello-pwn-<id> --user alice
 
 In **dev mode**: connect directly to the pod IP.
 In **prod mode**: connect only via WireGuard VPN (`vpn_ip` required).
+  - Download your VPN config from the CTF platform → import in WireGuard client → connect
+  - The config is **split-tunnel**: only `10.8.0.0/24` routes through VPN; internet works normally
+  - **If `ping 10.8.0.1` fails:** check that UDP 51820 is open inbound in your cloud security group
 
 ---
 
@@ -148,6 +152,7 @@ sudo systemctl stop nexus-engine nexus-node-agent
 | `NEXUS_REGISTRY_URL` | `localhost:5000` | Container registry |
 | `NEXUS_NODE_AGENT_ADDR` | `localhost:50051` | Node agent gRPC |
 | `NEXUS_NODE_AGENT_INSECURE` | `true` in dev | Disable mTLS |
+| `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `13.233.126.78:51820` |
 | `NEXUS_DEFAULT_SESSION_TTL_MINUTES` | `60` | Default session lifetime |
 | `NEXUS_MAX_SESSIONS_PER_USER` | `0` (unlimited) | Per-user session cap |
 | `NEXUS_K3S_NAMESPACE` | `nexus-challenges` | Pod namespace |

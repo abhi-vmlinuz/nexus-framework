@@ -62,3 +62,72 @@ If you run `docker run` or `docker compose` and get an error like:
      ```bash
      sudo systemctl restart docker
      ```
+
+## 7. WireGuard VPN — No Handshake (ping 10.8.0.1 fails, 100% packet loss)
+
+**Symptoms:**
+- `ping 10.8.0.1` → 100% packet loss after connecting VPN config
+- `sudo wg show wg0 latest-handshakes` shows `0` for all peers
+- `sudo wg show wg0 endpoints` shows `(none)` for all peers
+
+**Cause:** The AWS/GCP/cloud Security Group is blocking **UDP port 51820** inbound. WireGuard performs its handshake over UDP 51820. If the port is closed, the client's packets never arrive and the tunnel never establishes.
+
+**Fix:** Add an inbound rule to your security group:
+
+| Type | Protocol | Port | Source |
+|------|----------|------|--------|
+| Custom UDP | UDP | 51820 | `0.0.0.0/0` |
+
+This is a **permanent** requirement — not a one-time fix. Every time you launch an instance or recreate the security group, this rule must be present.
+
+**Verify after adding the rule:**
+```bash
+# On the client — reconnect
+sudo wg-quick down admin && sudo wg-quick up admin
+ping 10.8.0.1   # should respond within 5 seconds
+
+# On the server — confirm handshake established
+sudo wg show wg0 latest-handshakes   # should show a non-zero timestamp
+```
+
+---
+
+## 8. WireGuard VPN — Internet Breaks While Connected
+
+**Symptoms:**
+- `ping google.com` fails with `Temporary failure in name resolution` while VPN is connected
+- Disconnecting VPN restores internet
+
+**Cause:** Old versions of the generated `.conf` file contained `DNS = 1.1.1.1`. This caused `wg-quick` to call `resolvconf` and override the system's DNS resolver. Since Nexus uses a **split-tunnel** config (`AllowedIPs = 10.8.0.0/24` only), DNS traffic to `1.1.1.1` doesn't route through the tunnel, breaking name resolution.
+
+**Fix:** The `DNS = 1.1.1.1` line has been removed from the VPN config generator in `nexus-engine/internal/api/vpn.go`. Re-download your `.conf` from the CTF platform to get the fixed version.
+
+If you have an old config file, simply remove the `DNS = ...` line from the `[Interface]` section manually.
+
+---
+
+## 9. WireGuard Peer Registration Fails on Ubuntu (AppArmor blocks wg syncconf)
+
+**Symptoms:**
+- `GET /api/v1/vpn/config` returns HTTP 500
+- Node agent logs show: `wg syncconf wg0 /tmp/nexus-wg0-*.conf: fopen: Permission denied`
+- Running `sudo wg syncconf wg0 /tmp/test.conf` manually also fails with EACCES
+
+**Cause:** Ubuntu's AppArmor profile for the `wg` binary restricts file access to specific paths. It blocks `wg syncconf` and `wg setconf` from reading configuration files in `/tmp` (and other paths outside `/etc/wireguard/`). This is confirmed via:
+```bash
+sudo strace -e trace=openat wg syncconf wg0 /tmp/test.conf
+# openat(AT_FDCWD, "/tmp/test.conf", O_RDONLY) = -1 EACCES (Permission denied)
+sudo aa-status | grep wg   # shows wg and wg-quick have AppArmor profiles
+```
+
+**Fix (already applied in node-agent v0.1.1+):** The `reload_wireguard()` function has been replaced with a direct `wg set wg0 peer <pubkey> allowed-ips <ip>/32` call, which is AppArmor-safe (no file I/O). The `wg0.conf` file is still written for boot-time persistence. No manual action needed if running the current binary.
+
+If you see this on an older binary, rebuild and redeploy:
+```bash
+cd nexus-node-agent
+cargo build --release
+sudo systemctl stop nexus-node-agent
+sudo cp target/release/nexus-node-agent /usr/local/bin/nexus-node-agent
+sudo systemctl start nexus-node-agent
+```
+
