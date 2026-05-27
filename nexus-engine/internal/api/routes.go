@@ -84,5 +84,11 @@ func Register(r *gin.Engine, d Deps) {
 		admin.GET("/registry/images", h.GetRegistryImages)
 		admin.GET("/registry/stats", h.GetRegistryStats)
 		admin.GET("/registry/pulls", h.GetRegistryPulls)
+
+		// VPN config (WireGuard peer provisioning)
+		vh := newVPNHandler(d)
+		v1.GET("/vpn/config", vh.Config)
+		v1.GET("/vpn/status", vh.Status)
+		v1.POST("/vpn/regenerate", vh.Regenerate)
 	}
 }

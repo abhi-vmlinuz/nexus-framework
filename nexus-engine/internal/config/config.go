@@ -40,6 +40,16 @@ type Config struct {
 
 	// Challenge holds challenge-specific default settings.
 	Challenge ChallengeConfig
+
+	// WireGuard holds VPN endpoint configuration.
+	WireGuard WireGuardConfig
+}
+
+// WireGuardConfig holds WireGuard server settings used when generating peer configs.
+type WireGuardConfig struct {
+	// Endpoint is the public host:port of the WireGuard server (e.g. 13.233.126.78:51820).
+	// Set via NEXUS_WG_ENDPOINT environment variable.
+	Endpoint string
 }
 
 // ChallengeConfig holds default settings for challenges.
@@ -221,6 +231,9 @@ func Load() (*Config, error) {
 		Challenge: ChallengeConfig{
 			DefaultCPULimit:    getenv("NEXUS_DEFAULT_CPU_LIMIT", "0.5"),
 			DefaultMemoryLimit: getenv("NEXUS_DEFAULT_MEMORY_LIMIT", "256Mi"),
+		},
+		WireGuard: WireGuardConfig{
+			Endpoint: getenv("NEXUS_WG_ENDPOINT", ""),
 		},
 	}, nil
 }

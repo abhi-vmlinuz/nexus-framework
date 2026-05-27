@@ -98,7 +98,7 @@ sudo wg show wg0 latest-handshakes   # should show a non-zero timestamp
 - `ping google.com` fails with `Temporary failure in name resolution` while VPN is connected
 - Disconnecting VPN restores internet
 
-**Cause:** Old versions of the generated `.conf` file contained `DNS = 1.1.1.1`. This caused `wg-quick` to call `resolvconf` and override the system's DNS resolver. Since Nexus uses a **split-tunnel** config (`AllowedIPs = 10.8.0.0/24` only), DNS traffic to `1.1.1.1` doesn't route through the tunnel, breaking name resolution.
+**Cause:** Old versions of the generated `.conf` file contained `DNS = 1.1.1.1`. This caused `wg-quick` to call `resolvconf` and override the system's DNS resolver. Since Nexus uses a **split-tunnel** config (`AllowedIPs = 10.8.0.0/24, 10.42.0.0/16`), DNS traffic to `1.1.1.1` doesn't route through the tunnel, breaking name resolution.
 
 **Fix:** The `DNS = 1.1.1.1` line has been removed from the VPN config generator in `nexus-engine/internal/api/vpn.go`. Re-download your `.conf` from the CTF platform to get the fixed version.
 

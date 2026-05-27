@@ -218,7 +218,7 @@ All configuration values can be overridden with environment variables:
 - Systemd services run with `CAP_NET_ADMIN` capabilities
 - **Requires** `NEXUS_WG_ENDPOINT` env var set to `<public_ip>:51820`
 - **Requires** inbound UDP 51820 open in your firewall/security group
-- Generated VPN configs are **split-tunnel** (`AllowedIPs = 10.8.0.0/24` only) — internet traffic is NOT routed through the VPN, preserving normal connectivity for students
+- **Generated VPN configs are **split-tunnel** (`AllowedIPs = 10.8.0.0/24, 10.42.0.0/16` only) — internet traffic is NOT routed through the VPN, preserving normal connectivity for students while routing traffic destined for challenge pods (10.42.0.0/16) and management interface (10.8.0.0/24) through the VPN.
 
 ---
 

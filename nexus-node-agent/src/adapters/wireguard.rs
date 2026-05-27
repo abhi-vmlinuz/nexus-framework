@@ -1,27 +1,36 @@
 // adapters/wireguard.rs — WireGuard peer management adapter.
 // Manages /etc/wireguard/wg0.conf peer blocks and syncs runtime config via wg-quick.
-use std::fs::{self, OpenOptions};
+// NOTE: We avoid wg-syncconf/setconf because AppArmor blocks wg from reading /tmp files.
+// Instead we use `wg set wg0 peer <pubkey> allowed-ips <ip>/32` to update the live
+// interface directly, and keep wg0.conf writes for boot-time persistence only.
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tonic::Status;
-use tracing::warn;
+use tracing::{info, warn};
 
 const WG_CONFIG_PATH: &str = "/etc/wireguard/wg0.conf";
 const HANDSHAKE_ACTIVE_SECS: i64 = 180;
 
-/// Ensure a WireGuard peer exists (idempotent: removes old block if present, then appends).
+/// Ensure a WireGuard peer exists (idempotent).
+/// 1. Removes any existing block for this user from wg0.conf (persistence).
+/// 2. Appends the new peer block to wg0.conf (persistence).
+/// 3. Adds the peer to the live wg0 interface via `wg set` (no tmp file, AppArmor-safe).
 pub fn ensure_peer(user_id: &str, public_key: &str, vpn_ip: &str) -> Result<(), Status> {
+    // Update persistent config file first.
     remove_peer_block(user_id)?;
     append_peer_block(user_id, public_key, vpn_ip)?;
-    reload_wireguard()
+    // Add to live interface directly — avoids AppArmor restriction on tmp files.
+    add_peer_to_runtime(public_key, vpn_ip)
 }
 
 /// Revoke a WireGuard peer (idempotent).
+/// Removes from wg0.conf (persistence) and from the live interface.
 pub fn revoke_peer(user_id: &str, public_key: &str) -> Result<(), Status> {
     remove_peer_block(user_id)?;
-    // Also remove from runtime config.
+    // Remove from live interface directly — no file needed.
     let out = Command::new("wg")
         .args(["set", "wg0", "peer", public_key, "remove"])
         .output()
@@ -35,7 +44,8 @@ pub fn revoke_peer(user_id: &str, public_key: &str) -> Result<(), Status> {
             )));
         }
     }
-    reload_wireguard()
+    info!(user_id = %user_id, "WireGuard peer removed from runtime");
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -124,14 +134,19 @@ pub fn get_status() -> Result<WgStatus, Status> {
 
 fn remove_peer_block(user_id: &str) -> Result<(), Status> {
     let safe = crate::adapters::ipset::sanitize_user_id(user_id);
-    // Use sed to delete the "[Peer]" block tagged with "# User: <id>"
-    let expr = format!("/# User: {}/,+2d", safe);
+    // Delete the [Peer] header line immediately before the "# User: <id>" comment,
+    // plus the 3 lines that follow (# User, PublicKey, AllowedIPs).
+    // Pattern: match the [Peer] line before # User: <id> by using N;P;D sliding window,
+    // or simpler: delete from [Peer] where next-line matches # User: <id>.
+    // sed: /^\[Peer\]/{N; /# User: <safe>/{ N; N; d }}
+    let expr = format!("/^\\[Peer\\]/{{N;/# User: {}\\n/{{N;N;d}}}}", safe);
     let out = Command::new("sed")
         .args(["-i", &expr, WG_CONFIG_PATH])
         .output()
         .map_err(|e| Status::internal(format!("sed remove peer block: {e}")))?;
     if !out.status.success() {
-        warn!(user_id = %safe, "sed remove peer block returned non-zero (possibly no match)");
+        warn!(user_id = %safe, "sed remove peer block non-zero (possibly no match): {}",
+            String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(())
 }
@@ -150,50 +165,24 @@ fn append_peer_block(user_id: &str, public_key: &str, vpn_ip: &str) -> Result<()
     Ok(())
 }
 
-fn reload_wireguard() -> Result<(), Status> {
-    // Strip and sync rather than restart (avoids dropping active handshakes).
-    let stripped = run_capture("wg-quick", &["strip", "wg0"])?;
-    let tmp = format!(
-        "/tmp/nexus-wg0-{}.conf",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    fs::write(&tmp, stripped)
-        .map_err(|e| Status::internal(format!("write tmp wg config: {e}")))?;
-    let result = run_ok("wg", &["syncconf", "wg0", &tmp]);
-    let _ = fs::remove_file(&tmp);
-    result
-}
-
-fn run_capture(program: &str, args: &[&str]) -> Result<String, Status> {
-    let out = Command::new(program)
-        .args(args)
+/// Add a peer to the live WireGuard interface without touching any tmp file.
+/// Uses `wg set wg0 peer <pubkey> allowed-ips <ip>/32` which is AppArmor-safe.
+fn add_peer_to_runtime(public_key: &str, vpn_ip: &str) -> Result<(), Status> {
+    let allowed = format!("{}/32", vpn_ip);
+    let out = Command::new("wg")
+        .args(["set", "wg0", "peer", public_key, "allowed-ips", &allowed])
         .output()
-        .map_err(|e| Status::internal(format!("exec {program}: {e}")))?;
+        .map_err(|e| Status::internal(format!("wg set peer: {e}")))?;
     if !out.status.success() {
         return Err(Status::internal(format!(
-            "{program} failed: {}",
+            "wg set peer failed: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-fn run_ok(program: &str, args: &[&str]) -> Result<(), Status> {
-    let out = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|e| Status::internal(format!("exec {program}: {e}")))?;
-    if !out.status.success() {
-        return Err(Status::internal(format!(
-            "{program} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
-    }
+    info!(public_key = %public_key, vpn_ip = %vpn_ip, "WireGuard peer added to runtime");
     Ok(())
 }
+
 
 fn current_unix() -> i64 {
     SystemTime::now()

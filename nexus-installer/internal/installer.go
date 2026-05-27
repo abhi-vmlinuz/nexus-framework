@@ -651,3 +651,57 @@ func SetupShellCompletion(home string) (string, error) {
 
 	return "No shell completions were installed (framework directories missing or generation failed)", nil
 }
+
+// SetupNetworkPolicies applies the appropriate NetworkPolicy to the K3s cluster.
+func SetupNetworkPolicies(mode, namespace string) (string, error) {
+	var yaml string
+	if mode == "prod" {
+		yaml = fmt.Sprintf(`apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nexus-prod-isolate
+  namespace: %s
+  labels:
+    managed-by: nexus
+    mode: prod
+spec:
+  podSelector:
+    matchLabels:
+      app: nexus-challenge
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.8.0.0/24
+  egress:
+    - {}
+  policyTypes:
+    - Ingress
+    - Egress`, namespace)
+	} else {
+		yaml = fmt.Sprintf(`apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nexus-dev-allow-all
+  namespace: %s
+  labels:
+    managed-by: nexus
+    mode: dev
+spec:
+  podSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+  policyTypes:
+    - Ingress
+    - Egress`, namespace)
+	}
+
+	cmd := fmt.Sprintf("sudo k3s kubectl apply -f - <<'EOF'\n%s\nEOF", yaml)
+	out, err := RunCommand(cmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to apply network policy: %w", err)
+	}
+
+	return fmt.Sprintf("Applied %s network policy to namespace %s:\n%s", mode, namespace, out), nil
+}
