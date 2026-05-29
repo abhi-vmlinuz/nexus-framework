@@ -256,6 +256,57 @@ NEXUS_REGISTRY_AUTH_AWS_ACCOUNT=123456789012
 NEXUS_REGISTRY_AUTH_AWS_REGION=us-east-1
 ```
 
+### Switching Registries at Runtime
+
+You can switch between registries without restarting the engine:
+
+**Via CLI (Interactive):**
+```bash
+nexus config registry
+```
+This walks through Docker Hub, GHCR, AWS ECR, or custom registry setup.
+
+**Via API (Programmatic):**
+```bash
+# Switch to GHCR
+curl -X PUT http://localhost:8081/api/v1/admin/registry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "ghcr.io/your-org",
+    "auth_type": "ghcr",
+    "username": "your-username",
+    "password": "ghp_xxxxxxxxxxxx"
+  }'
+
+# Switch to Docker Hub
+curl -X PUT http://localhost:8081/api/v1/admin/registry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "docker.io/your-org",
+    "auth_type": "basic",
+    "username": "your-username",
+    "password": "your-password"
+  }'
+
+# Switch back to local registry
+curl -X PUT http://localhost:8081/api/v1/admin/registry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "localhost:5000",
+    "auth_type": "local"
+  }'
+```
+
+**What happens when you switch:**
+1. Engine updates in-memory configuration
+2. Persists to `/etc/nexus/engine.env`
+3. Runs `nerdctl login` to authenticate with the new registry
+4. Creates/updates K8s image pull secret (`nexus-pull-secret`)
+5. All future `nerdctl build/pull/push` operations use the new registry
+
+> [!NOTE]
+> **Existing challenges** still reference images from the old registry. New challenges will use the new registry. To use existing challenges with the new registry, re-register them or update the image references.
+
 ### Modes
 
 **`dev` mode** (default):

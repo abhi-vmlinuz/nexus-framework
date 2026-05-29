@@ -123,6 +123,42 @@ Returns health status of Engine, Redis, and Node Agent.
 
 Returns current runtime configuration including default resource limits.
 
+### 🔄 Update Registry Configuration
+`PUT /api/v1/admin/registry`
+
+Switch the container registry at runtime without restarting the engine.
+
+**Request Body:**
+```json
+{
+  "url": "ghcr.io/your-org",
+  "auth_type": "ghcr",
+  "username": "your-username",
+  "password": "***"
+}
+```
+
+**Supported `auth_type` values:**
+- `local` — Local registry (no authentication)
+- `basic` — Username/password authentication (Docker Hub, custom registries)
+- `ghcr` — GitHub Container Registry (uses GitHub Personal Access Token)
+- `awsecr` — AWS Elastic Container Registry (uses AWS credentials)
+
+**Response (200 OK):**
+```json
+{
+  "message": "registry configuration updated",
+  "url": "ghcr.io/your-org",
+  "status": "active"
+}
+```
+
+**What happens:**
+1. Engine updates in-memory configuration
+2. Persists to `/etc/nexus/engine.env`
+3. Runs `nerdctl login` to authenticate
+4. Creates/updates K8s image pull secret (`nexus-pull-secret`)
+
 ### 📊 Cluster Visibility
 *   `GET /api/v1/admin/nodes`: List K8s nodes and their status.
 *   `GET /api/v1/admin/cluster/pods`: Raw list of all challenge pods.
