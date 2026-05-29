@@ -227,6 +227,35 @@ All configuration values can be overridden with environment variables:
 | `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `13.233.126.78:51820` |
 | `KUBECONFIG` | `/etc/rancher/k3s/k3s.yaml` | K3s kubeconfig path |
 
+> [!NOTE]
+> **Registry URL Default**: When `NEXUS_REGISTRY_URL` is empty or not set, the engine defaults to `localhost:5000` (the local registry installed by the Nexus installer). This is the recommended setup for most deployments. Only set this variable when using an external registry like GHCR, Docker Hub, or AWS ECR.
+
+**Registry Configuration Examples:**
+
+```bash
+# Local registry (default — no configuration needed)
+# The installer sets up a local registry on port 5000
+# NEXUS_REGISTRY_URL can be left empty or unset
+
+# GitHub Container Registry (GHCR)
+NEXUS_REGISTRY_URL=ghcr.io/your-org
+NEXUS_REGISTRY_AUTH_TYPE=ghcr
+NEXUS_REGISTRY_AUTH_USERNAME=your-username
+NEXUS_REGISTRY_AUTH_PASSWORD=ghp_xxxxxxxxxxxx
+
+# Docker Hub
+NEXUS_REGISTRY_URL=docker.io/your-org
+NEXUS_REGISTRY_AUTH_TYPE=basic
+NEXUS_REGISTRY_AUTH_USERNAME=your-username
+NEXUS_REGISTRY_AUTH_PASSWORD=your-password
+
+# AWS ECR
+NEXUS_REGISTRY_URL=123456789012.dkr.ecr.us-east-1.amazonaws.com
+NEXUS_REGISTRY_AUTH_TYPE=awsecr
+NEXUS_REGISTRY_AUTH_AWS_ACCOUNT=123456789012
+NEXUS_REGISTRY_AUTH_AWS_REGION=us-east-1
+```
+
 ### Modes
 
 **`dev` mode** (default):
