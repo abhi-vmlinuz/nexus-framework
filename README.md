@@ -96,19 +96,41 @@ A full-screen TUI installer written in Go using Bubbletea. Replaces the legacy `
 
 ### Cloud / AWS Deployment (Required Firewall Rules)
 
-When running Nexus on a cloud VM (AWS EC2, GCP, etc.) the following **inbound ports must be open** in your security group / firewall. These are permanent requirements — not one-time setup:
+When running Nexus on a cloud VM (AWS EC2, GCP, Azure, etc.) the following **inbound ports must be open** in your security group / firewall. These are permanent requirements — not one-time setup:
 
 | Port | Protocol | Required For | Scope |
 |------|----------|-------------|-------|
 | **8081** | TCP | Nexus Engine REST API (CLI, CTF platform) | Your IP or `0.0.0.0/0` |
 | **51820** | **UDP** | **WireGuard VPN — student tunnel handshake** | `0.0.0.0/0` |
+| **5000** | TCP | Container Registry (if using local registry) | `127.0.0.1` only (internal) |
 | **50051** | TCP | Node Agent gRPC (localhost only — do not expose) | `127.0.0.1` only |
+| **3000** | TCP | CTF Platform Frontend (if deployed) | Your IP or `0.0.0.0/0` |
+| **4000** | TCP | CTF Platform Backend (if deployed) | Your IP or `0.0.0.0/0` |
 
 > [!IMPORTANT]
 > **Port 51820/UDP is the most commonly missed rule.** Without it, WireGuard peers can never complete a handshake. Symptoms: `ping 10.8.0.1` 100% packet loss, `wg show wg0 latest-handshakes` shows `0` for all peers. Adding the inbound UDP rule is the fix.
 
 > [!NOTE]
 > **Port 50051 must NOT be publicly exposed.** The node agent accepts privileged gRPC commands (WireGuard peer management, iptables rules) and is designed for localhost-only communication with the engine via mTLS.
+
+> [!NOTE]
+> **Port 5000 (Registry)** is only needed if you're running a local container registry. If using GHCR, Docker Hub, or AWS ECR, this port is not required.
+
+#### Cloud Provider Specific Instructions
+
+**AWS EC2:**
+1. Go to EC2 Console → Security Groups → Select your security group
+2. Edit Inbound Rules → Add Rule
+3. Add the ports listed above with appropriate sources
+
+**GCP:**
+1. Go to VPC Network → Firewall → Create Firewall Rule
+2. Set targets to your instance tag
+3. Add the ports as allowed protocols/ports
+
+**Azure:**
+1. Go to Virtual Machines → Networking → Inbound port rules
+2. Add the required ports with appropriate sources
 
 ---
 
@@ -292,6 +314,98 @@ To make it permanent, add the appropriate command to your shell's configuration 
 Nexus OSS provides a complete REST API for session lifecycle management and challenge orchestration. This allows for easy integration with existing CTF platforms like CTFd.
 
 For a full list of endpoints, request models, and response structures, see the [API Documentation](docs/api.md).
+
+### CTF Platform Integration
+
+Nexus OSS is designed as a backend infrastructure layer. Your CTF platform handles authentication, scoring, and user management while Nexus handles challenge deployment and isolation.
+
+#### Integration Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   CTF Platform  │────▶│   Nexus Engine  │────▶│   K3s Pods      │
+│  (Your App)     │     │   (Port 8081)   │     │  (Challenges)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+1. **Register Challenge**: Your platform calls `POST /api/v1/challenges` with either:
+   - `dockerfile_path` — engine builds from source
+   - `compose_path` — engine builds multi-container from compose
+   - `containers[]` — pre-built images (include `env` for configuration)
+
+2. **Start Session**: When a student starts a challenge, call `POST /api/v1/sessions` with:
+   - `challenge_id` — the registered challenge ID
+   - `user_id` — unique student identifier
+   - `vpn_ip` — student's WireGuard VPN IP (required in prod mode)
+
+3. **Get Session Status**: Poll `GET /api/v1/sessions/:id` to get pod IP and status
+
+4. **Terminate Session**: Call `DELETE /api/v1/sessions/:id` when student finishes or timeout occurs
+
+#### Multi-Container Challenges
+
+For challenges with multiple services (web app + database), use the `containers[]` field:
+
+```json
+{
+  "name": "web-challenge",
+  "containers": [
+    {
+      "name": "web",
+      "image": "localhost:5000/my-web:latest",
+      "ports": [8080],
+      "env": {"DB_HOST": "localhost", "DB_PORT": "5432"}
+    },
+    {
+      "name": "db",
+      "image": "localhost:5000/my-db:latest",
+      "ports": [5432],
+      "env": {"POSTGRES_USER": "ctf", "POSTGRES_PASSWORD": "ctf", "POSTGRES_DB": "ctf"}
+    }
+  ],
+  "ttl_minutes": 60
+}
+```
+
+> [!IMPORTANT]
+> **Environment Variables**: When using `containers[]`, you must include the `env` field for each container that needs configuration. Services like databases will fail without their required environment variables. When using `compose_path`, Nexus extracts env vars automatically.
+
+#### Challenge Packs
+
+For CTF platforms managing multiple challenges, store challenge definitions in a `challenge_packs` table:
+
+```sql
+CREATE TABLE challenge_packs (
+    id UUID PRIMARY KEY,
+    pack_name VARCHAR(100) UNIQUE NOT NULL,
+    display_name VARCHAR(200),
+    images JSONB NOT NULL,  -- Array of container specs with env
+    combined_ports JSONB,
+    compose_content TEXT,
+    is_multi_container BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+The `images` field should contain the full container specification including environment variables:
+
+```json
+[
+  {
+    "name": "web",
+    "image": "localhost:5000/my-web:latest",
+    "ports": [8080],
+    "env": {"DB_HOST": "localhost"}
+  },
+  {
+    "name": "db",
+    "image": "localhost:5000/my-db:latest",
+    "ports": [5432],
+    "env": {"POSTGRES_PASSWORD": "***"  " }
+  }
+]
+```
 
 ### Quick Example (Create Session)
 ```bash
