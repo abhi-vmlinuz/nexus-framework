@@ -67,9 +67,9 @@ Used to register and manage challenge definitions.
 ### 🟢 Register Challenge
 `POST /api/v1/challenges`
 
-Registers a challenge by building its image from a Dockerfile or Compose file.
+Registers a challenge. Supports three modes:
 
-**Request Body (Single Container):**
+**Option 1: Single Container (Build from Source)**
 ```json
 {
   "name": "pwn-challenge",
@@ -85,14 +85,43 @@ Registers a challenge by building its image from a Dockerfile or Compose file.
   }
 }
 ```
+Engine builds image via `nerdctl build` and pushes to configured registry.
 
-**Request Body (Multi-Container):**
+**Option 2: Multi-Container (Build from Compose)**
 ```json
 {
   "name": "complex-web",
-  "compose_path": "/absolute/path/to/docker-compose.yml"
+  "compose_path": "/absolute/path/to/docker-compose.yml",
+  "ttl_minutes": 90
 }
 ```
+Engine parses compose file, builds/pulls each service, extracts environment variables.
+
+**Option 3: Pre-Built Images (No Build)**
+```json
+{
+  "name": "web-challenge",
+  "containers": [
+    {
+      "name": "web",
+      "image": "ghcr.io/your-org/my-web:latest",
+      "ports": [8080],
+      "env": {"DB_HOST": "localhost", "DB_PORT": "5432"}
+    },
+    {
+      "name": "db",
+      "image": "ghcr.io/your-org/my-db:latest",
+      "ports": [5432],
+      "env": {"POSTGRES_USER": "ctf", "POSTGRES_PASSWORD": "ctf", "POSTGRES_DB": "ctf"}
+    }
+  ],
+  "ttl_minutes": 60
+}
+```
+Engine stores container specs directly. No build step. Use `env` field for container configuration.
+
+> [!IMPORTANT]
+> **Environment Variables**: When using `containers[]`, you must include the `env` field for each container that needs configuration. Services like databases will fail without their required environment variables.
 
 **Response (201 Created):**
 ```json

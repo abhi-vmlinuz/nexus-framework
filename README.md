@@ -397,97 +397,16 @@ For a full list of endpoints, request models, and response structures, see the [
 
 ### CTF Platform Integration
 
-Nexus OSS is designed as a backend infrastructure layer. Your CTF platform handles authentication, scoring, and user management while Nexus handles challenge deployment and isolation.
+For developers building CTF platforms, see the **[CTF Integration Guide](docs/ctf-integration.md)** for:
+- Complete integration flow
+- Challenge registration (pre-built images or build from source)
+- Session lifecycle management
+- VPN configuration for students
+- Environment variable handling
+- Database schema for challenge packs
+- Python code examples
 
-#### Integration Flow
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   CTF Platform  │────▶│   Nexus Engine  │────▶│   K3s Pods      │
-│  (Your App)     │     │   (Port 8081)   │     │  (Challenges)   │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-1. **Register Challenge**: Your platform calls `POST /api/v1/challenges` with either:
-   - `dockerfile_path` — engine builds from source
-   - `compose_path` — engine builds multi-container from compose
-   - `containers[]` — pre-built images (include `env` for configuration)
-
-2. **Start Session**: When a student starts a challenge, call `POST /api/v1/sessions` with:
-   - `challenge_id` — the registered challenge ID
-   - `user_id` — unique student identifier
-   - `vpn_ip` — student's WireGuard VPN IP (required in prod mode)
-
-3. **Get Session Status**: Poll `GET /api/v1/sessions/:id` to get pod IP and status
-
-4. **Terminate Session**: Call `DELETE /api/v1/sessions/:id` when student finishes or timeout occurs
-
-#### Multi-Container Challenges
-
-For challenges with multiple services (web app + database), use the `containers[]` field:
-
-```json
-{
-  "name": "web-challenge",
-  "containers": [
-    {
-      "name": "web",
-      "image": "localhost:5000/my-web:latest",
-      "ports": [8080],
-      "env": {"DB_HOST": "localhost", "DB_PORT": "5432"}
-    },
-    {
-      "name": "db",
-      "image": "localhost:5000/my-db:latest",
-      "ports": [5432],
-      "env": {"POSTGRES_USER": "ctf", "POSTGRES_PASSWORD": "ctf", "POSTGRES_DB": "ctf"}
-    }
-  ],
-  "ttl_minutes": 60
-}
-```
-
-> [!IMPORTANT]
-> **Environment Variables**: When using `containers[]`, you must include the `env` field for each container that needs configuration. Services like databases will fail without their required environment variables. When using `compose_path`, Nexus extracts env vars automatically.
-
-#### Challenge Packs
-
-For CTF platforms managing multiple challenges, store challenge definitions in a `challenge_packs` table:
-
-```sql
-CREATE TABLE challenge_packs (
-    id UUID PRIMARY KEY,
-    pack_name VARCHAR(100) UNIQUE NOT NULL,
-    display_name VARCHAR(200),
-    images JSONB NOT NULL,  -- Array of container specs with env
-    combined_ports JSONB,
-    compose_content TEXT,
-    is_multi_container BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-The `images` field should contain the full container specification including environment variables:
-
-```json
-[
-  {
-    "name": "web",
-    "image": "localhost:5000/my-web:latest",
-    "ports": [8080],
-    "env": {"DB_HOST": "localhost"}
-  },
-  {
-    "name": "db",
-    "image": "localhost:5000/my-db:latest",
-    "ports": [5432],
-    "env": {"POSTGRES_PASSWORD": "***"  " }
-  }
-]
-```
-
-### Quick Example (Create Session)
+**Quick Example (Create Session)**
 ```bash
 curl -X POST http://localhost:8081/api/v1/sessions \
   -H "Content-Type: application/json" \
