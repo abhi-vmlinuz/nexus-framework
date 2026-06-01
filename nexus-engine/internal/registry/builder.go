@@ -25,13 +25,79 @@ func NewBuilder(cfg config.RegistryConfig) *Builder {
 	return &Builder{cfg: cfg}
 }
 
-// BuildResult is returned after a successful build.
+// ToolingInfo captures the versions of build tools used.
+type ToolingInfo struct {
+	Nerdctl  string `json:"nerdctl"`
+	Buildkit string `json:"buildkit"`
+}
+
+// ContainerBuildResult captures the build outcome for a single container.
+type ContainerBuildResult struct {
+	Name      string        `json:"name"`
+	Image     string        `json:"image,omitempty"`
+	Status    string        `json:"status"` // built | pre-built | pulled | failed
+	Ports     []int         `json:"ports,omitempty"`
+	Duration  time.Duration `json:"duration_ms"`
+	Error     string        `json:"error,omitempty"`
+	BuildLog  string        `json:"-"` // excluded from JSON, fetched via /build-logs
+}
+
+// BuildResult is returned after a build operation.
 type BuildResult struct {
-	Image     string        // full image reference e.g. localhost:5000/pwn-101:latest
-	Tag       string        // just the tag
-	Ports     []int         // ports extracted from EXPOSE
-	Duration  time.Duration
-	BuildLog  string
+	Image      string                  `json:"image"`
+	Tag        string                  `json:"tag"`
+	Ports      []int                   `json:"ports"`
+	Duration   time.Duration           `json:"duration_ms"`
+	BuildLog   string                  `json:"-"` // excluded from JSON, fetched via /build-logs
+	StartedAt  time.Time               `json:"started_at"`
+	Containers []ContainerBuildResult  `json:"containers,omitempty"`
+	Tooling    ToolingInfo             `json:"tooling"`
+}
+
+// RegistryAuthInfo captures registry authentication status.
+type RegistryAuthInfo struct {
+	Method        string `json:"method"` // none | basic | ghcr | ecr
+	Authenticated bool   `json:"authenticated"`
+	ExpiresAt     string `json:"expires_at,omitempty"`
+	LastLogin     string `json:"last_login,omitempty"`
+}
+
+// GetRegistryAuth returns the current registry auth status.
+func (b *Builder) GetRegistryAuth() RegistryAuthInfo {
+	info := RegistryAuthInfo{
+		Method: b.cfg.AuthType,
+	}
+	if b.cfg.AuthType != "none" && b.cfg.Username != "" {
+		info.Authenticated = true
+	}
+	return info
+}
+
+// GetToolingVersions returns the installed nerdctl and buildkit versions.
+func GetToolingVersions() ToolingInfo {
+	info := ToolingInfo{}
+
+	if out, err := exec.Command("nerdctl", "version", "--format", "{{.Client.Version}}").Output(); err == nil {
+		info.Nerdctl = strings.TrimSpace(string(out))
+	} else if out, err := exec.Command("nerdctl", "--version").Output(); err == nil {
+		// fallback: "nerdctl version X.Y.Z"
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 3 {
+			info.Nerdctl = parts[2]
+		}
+	}
+
+	if out, err := exec.Command("buildkitd", "--version").Output(); err == nil {
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 2 {
+			info.Buildkit = parts[1]
+		}
+	} else {
+		// buildkitd might not be a standalone binary — check via nerdctl
+		info.Buildkit = "bundled"
+	}
+
+	return info
 }
 
 // Build runs nerdctl build and pushes the resulting image to the configured registry.
@@ -89,14 +155,118 @@ func (b *Builder) Build(challengeName, dockerfilePath string) (*BuildResult, err
 	}
 
 	buildLog := buildOut.String() + "\n" + pushOut.String()
+	duration := time.Since(start)
 
 	return &BuildResult{
-		Image:    imageRef,
-		Tag:      tag,
-		Ports:    exposedPorts,
-		Duration: time.Since(start),
-		BuildLog: buildLog,
+		Image:     imageRef,
+		Tag:       tag,
+		Ports:     exposedPorts,
+		Duration:  duration,
+		BuildLog:  buildLog,
+		StartedAt: start,
+		Containers: []ContainerBuildResult{
+			{
+				Name:     challengeName,
+				Image:    imageRef,
+				Status:   "built",
+				Ports:    exposedPorts,
+				Duration: duration,
+				BuildLog: buildLog,
+			},
+		},
+		Tooling: GetToolingVersions(),
 	}, nil
+}
+
+// BuildFromSource builds a single service and returns a ContainerBuildResult.
+// Used by ParseAndBuild for per-container tracking.
+func (b *Builder) BuildFromSource(svcName, imageRef, context, dockerfile string) ContainerBuildResult {
+	start := time.Now()
+
+	args := []string{
+		"build",
+		"--namespace", "k8s.io",
+		"-t", imageRef,
+	}
+	if dockerfile != "" {
+		args = append(args, "-f", dockerfile)
+	}
+	args = append(args, context)
+
+	var buildOut bytes.Buffer
+	cmd := exec.Command("nerdctl", args...)
+	cmd.Stdout = &buildOut
+	cmd.Stderr = &buildOut
+
+	if err := cmd.Run(); err != nil {
+		return ContainerBuildResult{
+			Name:     svcName,
+			Status:   "failed",
+			Duration: time.Duration(time.Since(start).Milliseconds()) * time.Millisecond,
+			Error:    fmt.Sprintf("nerdctl build failed: %s", buildOut.String()),
+			BuildLog: buildOut.String(),
+		}
+	}
+
+	// Push
+	var pushOut bytes.Buffer
+	pushArgs := []string{"push", "--namespace", "k8s.io"}
+	if auth := b.authArgs(); len(auth) > 0 {
+		pushArgs = append(pushArgs, auth...)
+	}
+	pushArgs = append(pushArgs, imageRef)
+
+	pushCmd := exec.Command("nerdctl", pushArgs...)
+	pushCmd.Stdout = &pushOut
+	pushCmd.Stderr = &pushOut
+
+	if err := pushCmd.Run(); err != nil {
+		return ContainerBuildResult{
+			Name:     svcName,
+			Image:    imageRef,
+			Status:   "failed",
+			Duration: time.Duration(time.Since(start).Milliseconds()) * time.Millisecond,
+			Error:    fmt.Sprintf("nerdctl push failed: %s", pushOut.String()),
+			BuildLog: buildOut.String() + "\n" + pushOut.String(),
+		}
+	}
+
+	return ContainerBuildResult{
+		Name:     svcName,
+		Image:    imageRef,
+		Status:   "built",
+		Duration: time.Duration(time.Since(start).Milliseconds()) * time.Millisecond,
+		BuildLog: buildOut.String() + "\n" + pushOut.String(),
+	}
+}
+
+// PullImage pulls a public image and returns a ContainerBuildResult.
+func (b *Builder) PullImage(svcName, imageRef string) ContainerBuildResult {
+	start := time.Now()
+
+	var out bytes.Buffer
+	cmd := exec.Command("nerdctl", "pull", "--namespace", "k8s.io", imageRef)
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	if err := cmd.Run(); err != nil {
+		return ContainerBuildResult{
+			Name:     svcName,
+			Image:    imageRef,
+			Status:   "failed",
+			Duration: time.Duration(time.Since(start).Milliseconds()) * time.Millisecond,
+			Error:    fmt.Sprintf("nerdctl pull failed: %s", out.String()),
+			BuildLog: out.String(),
+		}
+	}
+
+	return ContainerBuildResult{
+		Name:     svcName,
+		Image:    imageRef,
+		Status:   "pulled",
+		Duration: time.Duration(time.Since(start).Milliseconds()) * time.Millisecond,
+		BuildLog: out.String(),
+	}
 }
 
 // parseExposedPorts scans a Dockerfile for EXPOSE instructions.

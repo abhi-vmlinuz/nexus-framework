@@ -55,6 +55,7 @@ func Register(r *gin.Engine, d Deps) {
 		v1.GET("/challenges/:id", ch.Get)
 		v1.DELETE("/challenges/:id", ch.Delete)
 		v1.POST("/challenges/:id/rebuild", ch.Rebuild)
+		v1.GET("/challenges/:id/build-logs", ch.BuildLogs)
 
 		// Session management
 		sh := newSessionHandler(d)

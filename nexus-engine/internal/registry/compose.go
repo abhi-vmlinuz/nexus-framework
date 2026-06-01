@@ -48,16 +48,34 @@ type composeHealth struct {
 	StartPeriod string    `yaml:"start_period,omitempty"`
 }
 
-// ParseComposeResult is returned after a successful compose parse + build.
+// ParseComposeResult is returned after a compose parse + build operation.
 type ParseComposeResult struct {
 	Containers []state.ContainerSpec
 	AllPorts   []int
+	Build      ComposeBuildResult
+}
+
+// ComposeBuildResult captures the overall build outcome for a compose challenge.
+type ComposeBuildResult struct {
+	Status     string                 `json:"status"` // success | partial_failure | full_failure
+	StartedAt  time.Time              `json:"started_at"`
+	CompletedAt time.Time             `json:"completed_at"`
+	DurationMs int64                  `json:"duration_ms"`
+	Containers []ContainerBuildResult `json:"containers"`
+	Tooling    ToolingInfo            `json:"tooling"`
 }
 
 // ParseAndBuild reads a docker-compose.yml, builds any local service images
 // via nerdctl (engine runs as root), pulls public images, and returns the
 // resulting container specs ready for pod registration.
+//
+// On partial failure (some services build, others fail), it returns an error
+// but also populates result.Build with per-container status so the caller
+// can include detailed failure info in the API response.
 func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseComposeResult, error) {
+	start := time.Now()
+	tooling := GetToolingVersions()
+
 	data, err := os.ReadFile(composePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read compose file: %w", err)
@@ -75,14 +93,23 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 	}
 
 	composeDir := filepath.Dir(composePath)
-	result := &ParseComposeResult{}
+	result := &ParseComposeResult{
+		Build: ComposeBuildResult{
+			StartedAt: start,
+			Tooling:   tooling,
+		},
+	}
 	portSeen := map[int]bool{}
+
+	var failedServices []string
+	var lastError error
 
 	for svcName, svc := range cf.Services {
 		var imageRef string
+		var buildResult ContainerBuildResult
 
 		if svc.Build.Context != "" {
-			// Local service: build with nerdctl. Engine runs as root, so no sudo needed.
+			// Local service: build with nerdctl.
 			context := svc.Build.Context
 			if !filepath.IsAbs(context) {
 				context = filepath.Join(composeDir, context)
@@ -93,23 +120,40 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 			}
 			imageRef = fmt.Sprintf("%s/%s-%s:latest", b.cfg.URL, sanitizeImageName(challengeName), sanitizeImageName(svcName))
 
-			if err := b.buildAndPush(imageRef, context, dockerfile); err != nil {
-				return nil, fmt.Errorf("service %q: %w", svcName, err)
-			}
+			buildResult = b.BuildFromSource(svcName, imageRef, context, dockerfile)
 		} else if svc.Image != "" {
 			// Public image: pull into k8s.io namespace.
 			imageRef = svc.Image
-			if err := b.pull(imageRef); err != nil {
-				return nil, fmt.Errorf("service %q: %w", svcName, err)
-			}
+			buildResult = b.PullImage(svcName, imageRef)
 		} else {
-			return nil, fmt.Errorf("service %q: must have either build or image", svcName)
+			buildResult = ContainerBuildResult{
+				Name:   svcName,
+				Status: "failed",
+				Error:  fmt.Sprintf("service %q: must have either build or image", svcName),
+			}
+		}
+
+		// Set ports on the build result.
+		if ports, err := parseComposePorts(svc.Ports); err == nil {
+			buildResult.Ports = ports
+		}
+
+		result.Build.Containers = append(result.Build.Containers, buildResult)
+
+		if buildResult.Status == "failed" {
+			failedServices = append(failedServices, svcName)
+			lastError = fmt.Errorf("service %q: %s", svcName, buildResult.Error)
+			continue
 		}
 
 		// Parse ports from both "ports" and "expose" keys.
 		ports, err := parseComposePorts(svc.Ports)
 		if err != nil {
-			return nil, fmt.Errorf("service %q: %w", svcName, err)
+			failedServices = append(failedServices, svcName)
+			lastError = fmt.Errorf("service %q: %w", svcName, err)
+			result.Build.Containers[len(result.Build.Containers)-1].Status = "failed"
+			result.Build.Containers[len(result.Build.Containers)-1].Error = err.Error()
+			continue
 		}
 		for _, p := range ports {
 			if !portSeen[p] {
@@ -143,6 +187,21 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 		result.Containers = append(result.Containers, spec)
 	}
 
+	// Finalize build metadata.
+	completedAt := time.Now()
+	result.Build.CompletedAt = completedAt
+	result.Build.DurationMs = completedAt.Sub(start).Milliseconds()
+
+	if len(failedServices) > 0 {
+		if len(failedServices) == len(cf.Services) {
+			result.Build.Status = "full_failure"
+		} else {
+			result.Build.Status = "partial_failure"
+		}
+		return result, fmt.Errorf("%d of %d services failed to build: %w", len(failedServices), len(cf.Services), lastError)
+	}
+
+	result.Build.Status = "success"
 	return result, nil
 }
 

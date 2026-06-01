@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -204,6 +205,76 @@ func (s *Store) DeleteChallenge(id string) error {
 	s.client.Del(s.ctx, fmt.Sprintf("challenge:%s", id))
 	s.client.SRem(s.ctx, "challenges", id)
 	return nil
+}
+
+// ─── Build log operations ─────────────────────────────────────────────────────
+
+// BuildLogEntry represents a single container's build log.
+type BuildLogEntry struct {
+	ChallengeID string `json:"challenge_id"`
+	Container   string `json:"container"`
+	Log         string `json:"log"`
+}
+
+// SaveBuildLog stores the build log for a specific container.
+// Logs expire after 24 hours.
+func (s *Store) SaveBuildLog(challengeID, container, logContent string) error {
+	key := fmt.Sprintf("build_log:%s:%s", challengeID, container)
+	if err := s.client.Set(s.ctx, key, logContent, 24*time.Hour).Err(); err != nil {
+		return fmt.Errorf("save build log: %w", err)
+	}
+	// Track which containers have logs for this challenge.
+	s.client.SAdd(s.ctx, fmt.Sprintf("build_log:%s", challengeID), container)
+	return nil
+}
+
+// GetBuildLog retrieves the build log for a specific container.
+func (s *Store) GetBuildLog(challengeID, container string) (string, error) {
+	key := fmt.Sprintf("build_log:%s:%s", challengeID, container)
+	log, err := s.client.Get(s.ctx, key).Result()
+	if err == redis.Nil {
+		return "", fmt.Errorf("build log not found for container %q in challenge %q", container, challengeID)
+	}
+	if err != nil {
+		return "", err
+	}
+	return log, nil
+}
+
+// GetAllBuildLogs retrieves build logs for all containers in a challenge.
+func (s *Store) GetAllBuildLogs(challengeID string) (map[string]string, error) {
+	containers, err := s.client.SMembers(s.ctx, fmt.Sprintf("build_log:%s", challengeID)).Result()
+	if err != nil {
+		return nil, err
+	}
+	logs := make(map[string]string, len(containers))
+	for _, container := range containers {
+		if log, err := s.GetBuildLog(challengeID, container); err == nil {
+			logs[container] = log
+		}
+	}
+	return logs, nil
+}
+
+// GetBuildLogLines returns the last N lines of a container's build log.
+func (s *Store) GetBuildLogLines(challengeID, container string, lines int) (string, error) {
+	log, err := s.GetBuildLog(challengeID, container)
+	if err != nil {
+		return "", err
+	}
+	return tailLines(log, lines), nil
+}
+
+// tailLines returns the last n lines of a string.
+func tailLines(s string, n int) string {
+	if n <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // ─── Session operations ───────────────────────────────────────────────────────
