@@ -101,14 +101,19 @@ func Register(r *gin.Engine, d Deps) {
 	}
 }
 
-// RateLimit returns a gin middleware that limits requests to rps per second
-// using a token-bucket rate limiter. Excess requests receive HTTP 429.
+// RateLimit returns a gin middleware that limits write requests (POST/PUT/DELETE/PATCH)
+// to rps per second using a token-bucket rate limiter. Read requests (GET/HEAD) are
+// unlimited since they are cheap and the TUI polls every 2 seconds.
 func RateLimit(rps float64) gin.HandlerFunc {
 	limiter := rate.NewLimiter(rate.Limit(rps), 10)
 	return func(c *gin.Context) {
-		if !limiter.Allow() {
-			c.AbortWithStatusJSON(429, gin.H{"error": "rate limit exceeded"})
-			return
+		// Only rate limit write operations
+		switch c.Request.Method {
+		case "POST", "PUT", "DELETE", "PATCH":
+			if !limiter.Allow() {
+				c.AbortWithStatusJSON(429, gin.H{"error": "rate limit exceeded"})
+				return
+			}
 		}
 		c.Next()
 	}
