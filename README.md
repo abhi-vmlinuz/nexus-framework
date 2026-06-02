@@ -368,7 +368,7 @@ The CLI automatically reads the key from `~/.config/nexus/config.json`. To set i
 nexus config set engine.api_key <your-key>
 ```
 
-If no key is configured, the engine runs in dev mode (all endpoints open).
+If no key is configured, all endpoints are open (auth disabled).
 
 ---
 

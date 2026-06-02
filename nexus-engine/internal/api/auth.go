@@ -10,7 +10,7 @@ import (
 
 // RequireAPIKey returns gin middleware that enforces API key authentication.
 // Public endpoints (/health, /metrics) are exempt.
-// If no key is configured (dev mode), all requests are allowed.
+// If no key is configured, all requests are allowed (auth disabled).
 func RequireAPIKey(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Public endpoints — no auth required
@@ -20,7 +20,7 @@ func RequireAPIKey(cfg *config.Config) gin.HandlerFunc {
 		}
 		expected := cfg.APIKey
 		if expected == "" {
-			// No key configured = dev mode, allow all
+			// No key configured — allow all (auth disabled)
 			c.Next()
 			return
 		}

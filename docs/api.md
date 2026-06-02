@@ -15,7 +15,7 @@ All endpoints require an API key via the `Authorization: Bearer <key>` header, e
 - `GET /health` — public
 - `GET /metrics` — public
 
-If no key is configured (dev mode), all endpoints are open.
+If no key is configured, all endpoints are open (auth disabled).
 
 ```bash
 # Authenticated request

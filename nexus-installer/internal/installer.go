@@ -312,7 +312,7 @@ PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING 
 	return RunCommand(cmd)
 }
 
-var Version = "v0.1.1"
+var Version = "v0.1.2"
 
 // BuildAndInstallBinaries handles Phase 7.
 func BuildAndInstallBinaries(repoRoot string) (string, error) {
