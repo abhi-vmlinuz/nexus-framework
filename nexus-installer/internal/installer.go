@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -429,6 +431,24 @@ func WriteConfigFile(home string, conf Config) (string, error) {
 		return "", err
 	}
 
+	// Generate or preserve API key (needed for both config.json and engine.env)
+	apiKey := ""
+	envPath := filepath.Join("/etc/nexus", "engine.env")
+	if existing, err := os.ReadFile(envPath); err == nil {
+		for _, line := range strings.Split(string(existing), "\n") {
+			if strings.HasPrefix(line, "NEXUS_API_KEY=") {
+				apiKey = strings.TrimPrefix(line, "NEXUS_API_KEY=")
+				break
+			}
+		}
+	}
+	if apiKey == "" {
+		bytes := make([]byte, 32)
+		if _, err := rand.Read(bytes); err == nil {
+			apiKey = hex.EncodeToString(bytes)
+		}
+	}
+
 	content := fmt.Sprintf(`{
   "engine": {
     "url": "http://localhost:%s",
@@ -451,8 +471,9 @@ func WriteConfigFile(home string, conf Config) (string, error) {
   },
   "k8s": {
     "namespace": "%s"
-  }
-}`, conf.EnginePort, conf.Mode, conf.RegistryType, conf.RegistryURL, conf.RegistryUser, conf.RegistryPass, conf.RedisURL, conf.NodeAgentAddr, conf.K8sNamespace)
+  },
+  "api_key": "%s"
+}`, conf.EnginePort, conf.Mode, conf.RegistryType, conf.RegistryURL, conf.RegistryUser, conf.RegistryPass, conf.RedisURL, conf.NodeAgentAddr, conf.K8sNamespace, apiKey)
 
 	err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(content), 0600)
 	if err != nil {
@@ -495,7 +516,8 @@ NEXUS_REGISTRY_AUTH_USERNAME=%s
 NEXUS_REGISTRY_AUTH_PASSWORD=%s
 NEXUS_NODE_AGENT_ADDR=%s
 NEXUS_NODE_AGENT_INSECURE=%s
-`, conf.Mode, conf.EnginePort, conf.RedisURL, conf.K8sNamespace, conf.RegistryURL, conf.RegistryType, conf.RegistryUser, conf.RegistryPass, conf.NodeAgentAddr, insecure)
+NEXUS_API_KEY=%s
+`, conf.Mode, conf.EnginePort, conf.RedisURL, conf.K8sNamespace, conf.RegistryURL, conf.RegistryType, conf.RegistryUser, conf.RegistryPass, conf.NodeAgentAddr, insecure, apiKey)
 
 	if err := os.WriteFile(filepath.Join(etcDir, "engine.env"), []byte(envContent), 0600); err != nil {
 		return "", err
