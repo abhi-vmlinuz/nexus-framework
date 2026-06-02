@@ -249,7 +249,7 @@ All configuration values can be overridden with environment variables:
 | `NEXUS_NODE_AGENT_ADDR` | `localhost:50051` | Node agent gRPC address |
 | `NEXUS_K3S_NAMESPACE` | `nexus-challenges` | Kubernetes namespace |
 | `NEXUS_ENGINE_URL` | `http://localhost:8081` | Used by the CLI to reach the engine |
-| `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `13.233.126.78:51820` |
+| `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `10.X.X.X8:51820` |
 | `NEXUS_API_KEY` | *(auto-generated)* | API authentication key (auto-generated during install) |
 | `NEXUS_ALLOWED_BUILD_PATHS` | `/opt/nexus/challenges,/tmp` | Comma-separated list of allowed directories for Dockerfile/compose paths |
 | `KUBECONFIG` | `/etc/rancher/k3s/k3s.yaml` | K3s kubeconfig path |
