@@ -141,8 +141,33 @@ When running Nexus on a cloud VM (AWS EC2, GCP, Azure, etc.) the following **inb
 Install Nexus OSS on any supported Linux distribution with a single command:
 
 ```bash
-curl -fSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
 ```
+
+This automatically detects and installs the **latest stable release**.
+
+#### Channels
+
+```bash
+# Stable (default) — auto-detects latest release
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+
+# Development builds — latest rolling dev snapshot
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --dev
+
+# Specific version
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
+```
+
+| Flag | Description |
+|---|---|
+| (default) | Install latest stable release (auto-detected from GitLab releases) |
+| `--stable` | Same as default — explicitly select stable channel |
+| `--dev` | Install latest development build (rolling `latest-dev` tag) |
+| `--tag <version>` | Install a specific release (e.g., `--tag v0.1.1-beta`) |
+| `--help` | Show usage information |
+
+> **Environment override**: `RELEASE_TAG=v0.1.1-beta` can be set to force a specific tag.
 
 ### Manual Installation
 

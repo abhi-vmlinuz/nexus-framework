@@ -33,17 +33,21 @@ cd nexus-cli && go build -o nexus . && cd ..
 ## 2. Bootstrap (one command)
 
 ```bash
-sudo bash deploy/setup.sh
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
 ```
 
-The script will interactively ask for:
-- **Mode**: `dev` (local testing) or `prod` (strict VPN isolation)
-- **Registry URL**: `localhost:5000` (default: deploys a local registry in k3s)
-- **Redis URL**: `redis://localhost:6379` (default: uses system Redis)
+The installer will guide you through the setup interactively (mode, registry, VPN, etc.).
 
-> **Non-interactive (CI/CD):**
+> **Channels:**
 > ```bash
-> NEXUS_MODE=dev sudo bash deploy/setup.sh --non-interactive
+> # Latest stable release (default)
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+>
+> # Development build
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --dev
+>
+> # Specific version
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
 > ```
 
 ---
