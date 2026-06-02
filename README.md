@@ -250,6 +250,8 @@ All configuration values can be overridden with environment variables:
 | `NEXUS_K3S_NAMESPACE` | `nexus-challenges` | Kubernetes namespace |
 | `NEXUS_ENGINE_URL` | `http://localhost:8081` | Used by the CLI to reach the engine |
 | `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard, e.g. `13.233.126.78:51820` |
+| `NEXUS_API_KEY` | *(auto-generated)* | API authentication key (auto-generated during install) |
+| `NEXUS_ALLOWED_BUILD_PATHS` | `/opt/nexus/challenges,/tmp` | Comma-separated list of allowed directories for Dockerfile/compose paths |
 | `KUBECONFIG` | `/etc/rancher/k3s/k3s.yaml` | K3s kubeconfig path |
 
 > [!NOTE]
@@ -346,6 +348,27 @@ curl -X PUT http://localhost:8081/api/v1/admin/registry \
 - **Requires** `NEXUS_WG_ENDPOINT` env var set to `<public_ip>:51820`
 - **Requires** inbound UDP 51820 open in your firewall/security group
 - **Generated VPN configs are **split-tunnel** (`AllowedIPs = 10.8.0.0/24, 10.42.0.0/16` only) — internet traffic is NOT routed through the VPN, preserving normal connectivity for students while routing traffic destined for challenge pods (10.42.0.0/16) and management interface (10.8.0.0/24) through the VPN.
+
+### API Key Authentication
+
+The engine requires an API key for all endpoints except `/health` and `/metrics`. The key is set during installation and stored in `/etc/nexus/engine.env`.
+
+```bash
+# View current key
+sudo grep NEXUS_API_KEY /etc/nexus/engine.env
+
+# Set a new key
+echo "NEXUS_API_KEY=$(openssl rand -hex 32)" | sudo tee -a /etc/nexus/engine.env
+sudo systemctl restart nexus-engine
+```
+
+The CLI automatically reads the key from `~/.config/nexus/config.json`. To set it manually:
+
+```bash
+nexus config set engine.api_key <your-key>
+```
+
+If no key is configured, the engine runs in dev mode (all endpoints open).
 
 ---
 

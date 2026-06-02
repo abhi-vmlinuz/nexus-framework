@@ -31,14 +31,18 @@ pub fn ensure_rule(check_args: &[&str], insert_args: &[&str], desc: &str) -> Res
 }
 
 /// Delete an iptables rule (-D) repeatedly until absent.
+/// Caps at 1000 iterations to prevent infinite loops.
 pub fn remove_rule(delete_args: &[&str], desc: &str) -> Result<(), Status> {
-    loop {
+    let max_iterations = 1000;
+    let mut count = 0;
+    while count < max_iterations {
         let out = Command::new("iptables")
             .args(delete_args)
             .output()
             .map_err(|e| Status::internal(format!("iptables delete exec: {e}")))?;
 
         if out.status.success() {
+            count += 1;
             continue; // Deleted one; loop to remove duplicates.
         }
 
@@ -52,6 +56,9 @@ pub fn remove_rule(delete_args: &[&str], desc: &str) -> Result<(), Status> {
             )));
         }
         break; // Unknown error, stop looping.
+    }
+    if count >= max_iterations {
+        tracing::warn!("iptables remove_rule hit iteration limit ({}) for rule: {}", max_iterations, desc);
     }
     Ok(())
 }

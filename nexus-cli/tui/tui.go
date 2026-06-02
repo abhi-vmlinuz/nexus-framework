@@ -451,7 +451,7 @@ func (m Model) renderMetrics() string {
 	}
 
 	lines := []string{
-		styleHeader.Render("Live Engine Metrics (Prometheus)"),
+		styleHeader.Render("Live Engine Metrics"),
 		"",
 		renderBar("Goroutines", metrics["go_goroutines"], ""),
 		renderBar("Heap Allocated", metrics["go_memstats_heap_alloc_bytes"]/(1024*1024), " MB"),

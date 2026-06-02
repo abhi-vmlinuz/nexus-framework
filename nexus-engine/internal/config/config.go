@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,8 +42,17 @@ type Config struct {
 	// Challenge holds challenge-specific default settings.
 	Challenge ChallengeConfig
 
+	// AllowedBuildPaths is a list of filesystem prefixes that user-supplied
+	// build paths (Dockerfile, compose) must reside under. Prevents path
+	// traversal attacks (e.g. /etc/shadow). Set via NEXUS_ALLOWED_BUILD_PATHS.
+	AllowedBuildPaths []string
+
 	// WireGuard holds VPN endpoint configuration.
 	WireGuard WireGuardConfig
+
+	// APIKey is the shared secret for authenticating API requests.
+	// When empty, authentication is disabled (dev mode).
+	APIKey string
 }
 
 // WireGuardConfig holds WireGuard server settings used when generating peer configs.
@@ -131,7 +141,12 @@ func (c *Config) SaveToFile(path string) error {
 	}
 	defer f.Close()
 
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
 	// Write basic env vars
+	fmt.Fprintf(f, "NEXUS_API_KEY=%s\n", c.APIKey)
 	fmt.Fprintf(f, "NEXUS_MODE=%s\n", c.Mode)
 	fmt.Fprintf(f, "NEXUS_PORT=%s\n", c.Port)
 	fmt.Fprintf(f, "NEXUS_REDIS_URL=%s\n", c.RedisURL)
@@ -200,6 +215,7 @@ func Load() (*Config, error) {
 	return &Config{
 		Mode:         mode,
 		Port:         getenv("NEXUS_PORT", "8081"),
+		APIKey:       os.Getenv("NEXUS_API_KEY"),
 		RedisURL:     getenv("NEXUS_REDIS_URL", "redis://localhost:6379"),
 		K3sNamespace: getenv("NEXUS_K3S_NAMESPACE", "nexus-challenges"),
 		Registry: RegistryConfig{
@@ -235,6 +251,7 @@ func Load() (*Config, error) {
 		WireGuard: WireGuardConfig{
 			Endpoint: getenv("NEXUS_WG_ENDPOINT", ""),
 		},
+		AllowedBuildPaths: parsePaths(getenv("NEXUS_ALLOWED_BUILD_PATHS", "/opt/nexus/challenges,/tmp")),
 	}, nil
 }
 
@@ -311,6 +328,20 @@ func (c *Config) SetMaxWorkers(val int) {
 	c.Reconciler.MaxWorkers = val
 }
 
+func (c *Config) SetRegistryURL(url string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Registry.URL = url
+}
+
+func (c *Config) SetRegistryAuth(authType, username, password string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Registry.AuthType = authType
+	c.Registry.Username = username
+	c.Registry.Password = password
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func getenv(key, fallback string) string {
@@ -342,6 +373,20 @@ func parseBool(key string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("invalid value %q: %w", raw, err)
 	}
 	return b, nil
+}
+
+func parsePaths(raw string) []string {
+	var paths []string
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		return []string{"/opt/nexus/challenges", "/tmp"}
+	}
+	return paths
 }
 
 func parseDuration(key string, fallback time.Duration) (time.Duration, error) {

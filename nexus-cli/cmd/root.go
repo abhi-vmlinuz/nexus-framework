@@ -63,7 +63,7 @@ func newRootCmd() *cobra.Command {
 			cfg = &config.Config{}
 			cfg.Engine.URL = "http://localhost:8081"
 		}
-		return client.New(cfg.Engine.URL)
+		return client.New(cfg.Engine.URL, cfg.APIKey)
 	}
 
 	// ── Subcommands ──────────────────────────────────────────────────────────

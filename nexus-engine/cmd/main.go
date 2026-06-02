@@ -66,7 +66,7 @@ func main() {
 	}
 
 	// ── Registry builder ────────────────────────────────────────────────────
-	builder := registry.NewBuilder(cfg.Registry)
+	builder := registry.NewBuilder(cfg.Registry, cfg.AllowedBuildPaths)
 
 	// ── Controller ──────────────────────────────────────────────────────────
 	ctrl := controller.New(

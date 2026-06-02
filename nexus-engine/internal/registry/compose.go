@@ -76,13 +76,21 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 	start := time.Now()
 	tooling := GetToolingVersions()
 
+	// Validate the path is within allowed directories (path traversal protection).
+	if err := ValidateBuildPath(composePath, b.allowedPaths); err != nil {
+		return nil, fmt.Errorf("path validation: %w", err)
+	}
+
 	data, err := os.ReadFile(composePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read compose file: %w", err)
 	}
 
-	// Expand env vars in the compose file (e.g. ${REGISTRY_URL}).
-	expanded := os.ExpandEnv(string(data))
+	// Expand env vars in the compose file using an allow-list to prevent
+	// leaking host environment variables into compose files.
+	expanded := safeExpandEnv(string(data), map[string]string{
+		"REGISTRY_URL": b.cfg.URL,
+	})
 
 	var cf composeFile
 	if err := yaml.Unmarshal([]byte(expanded), &cf); err != nil {
@@ -172,7 +180,7 @@ func (b *Builder) ParseAndBuild(challengeName, composePath string) (*ParseCompos
 		}
 
 		// Convert Resources
-		if svc.Deploy != nil && svc.Deploy.Resources.Limits.CPUs != "" || svc.Deploy != nil && svc.Deploy.Resources.Limits.Memory != "" {
+		if (svc.Deploy != nil && svc.Deploy.Resources.Limits.CPUs != "") || (svc.Deploy != nil && svc.Deploy.Resources.Limits.Memory != "") {
 			spec.Resources = &state.Resources{
 				CPU:    svc.Deploy.Resources.Limits.CPUs,
 				Memory: svc.Deploy.Resources.Limits.Memory,
@@ -345,4 +353,16 @@ func parseHealthCheck(hc *composeHealth) *state.ReadinessProbe {
 	}
 
 	return probe
+}
+
+// safeExpandEnv expands ${VAR} references in data using only the explicit
+// allow-list of key→value mappings. Unknown variables are replaced with an
+// empty string rather than leaking host environment variables.
+func safeExpandEnv(data string, allowed map[string]string) string {
+	return os.Expand(data, func(key string) string {
+		if val, ok := allowed[key]; ok {
+			return val
+		}
+		return ""
+	})
 }

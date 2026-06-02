@@ -60,8 +60,8 @@ func (h *vpnHandler) Config(c *gin.Context) {
 		return
 	}
 
-	// Assign VPN IP.
-	vpnIP, err := h.d.Store.GetNextAvailableVPNIP()
+	// Assign VPN IP (atomically claims to prevent race conditions).
+	vpnIP, err := h.d.Store.ClaimNextAvailableVPNIP()
 	if err != nil {
 		log.Printf("[VPN] IP assignment failed for user %s: %v", userID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "VPN IP pool exhausted"})

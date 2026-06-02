@@ -13,17 +13,26 @@ import (
 // Client is a typed HTTP client for nexus-engine.
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
 // New creates a new Client targeting the given engine base URL.
-func New(engineURL string) *Client {
+func New(engineURL, apiKey string) *Client {
 	return &Client{
 		baseURL: engineURL,
+		apiKey:  apiKey,
 		httpClient: &http.Client{
 			// Compose builds can take several minutes; use a generous timeout.
 			Timeout: 10 * time.Minute,
 		},
+	}
+}
+
+// setAuth sets the Authorization header on a request if an API key is configured.
+func (c *Client) setAuth(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 }
 
@@ -336,7 +345,12 @@ func (c *Client) GetRegistryPulls() ([]RegistryPull, error) {
 }
 
 func (c *Client) RawMetrics() (string, error) {
-	resp, err := c.httpClient.Get(c.baseURL + "/metrics")
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/metrics", nil)
+	if err != nil {
+		return "", err
+	}
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -381,7 +395,12 @@ func (c *Client) GetEngineConfig() (map[string]any, error) {
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 func (c *Client) get(path string, out any) error {
-	resp, err := c.httpClient.Get(c.baseURL + path)
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -399,6 +418,7 @@ func (c *Client) put(path string, body any, out any) error {
 
 func (c *Client) delete(path string) error {
 	req, _ := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	c.setAuth(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", path, err)
@@ -427,6 +447,7 @@ func (c *Client) do(method, path string, body any, out any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, path, err)

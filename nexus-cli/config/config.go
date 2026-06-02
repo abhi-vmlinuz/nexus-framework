@@ -19,6 +19,7 @@ type Config struct {
 		URL  string `json:"url"`
 		Mode string `json:"mode"`
 	} `json:"engine"`
+	APIKey string `json:"api_key,omitempty"`
 	Registry struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
@@ -114,6 +115,7 @@ func loadConfigFromEnv() (*Config, error) {
 
 	cfg.Engine.URL = os.Getenv("NEXUS_ENGINE_URL")
 	cfg.Engine.Mode = os.Getenv("NEXUS_MODE")
+	cfg.APIKey = os.Getenv("NEXUS_API_KEY")
 	cfg.Registry.URL = os.Getenv("NEXUS_REGISTRY_URL")
 	cfg.Redis.URL = os.Getenv("NEXUS_REDIS_URL")
 	cfg.NodeAgent.Addr = os.Getenv("NEXUS_NODE_AGENT_ADDR")
@@ -249,7 +251,7 @@ func (c *Config) Save() error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return ioutil.WriteFile(path, data, 0644)
+	return ioutil.WriteFile(path, data, 0600)
 }
 
 // Validate checks if the configured services are responding.

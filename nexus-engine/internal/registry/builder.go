@@ -17,12 +17,13 @@ import (
 
 // Builder handles nerdctl build + push operations.
 type Builder struct {
-	cfg config.RegistryConfig
+	cfg          config.RegistryConfig
+	allowedPaths []string
 }
 
 // NewBuilder creates a Builder from registry config.
-func NewBuilder(cfg config.RegistryConfig) *Builder {
-	return &Builder{cfg: cfg}
+func NewBuilder(cfg config.RegistryConfig, allowedPaths []string) *Builder {
+	return &Builder{cfg: cfg, allowedPaths: allowedPaths}
 }
 
 // ToolingInfo captures the versions of build tools used.
@@ -105,6 +106,11 @@ func GetToolingVersions() ToolingInfo {
 // challengeName is used as the image name (e.g. "pwn-101").
 func (b *Builder) Build(challengeName, dockerfilePath string) (*BuildResult, error) {
 	start := time.Now()
+
+	// Validate the path is within allowed directories (path traversal protection).
+	if err := ValidateBuildPath(dockerfilePath, b.allowedPaths); err != nil {
+		return nil, fmt.Errorf("path validation: %w", err)
+	}
 
 	// Validate the Dockerfile exists.
 	if err := validateDockerfile(dockerfilePath); err != nil {
@@ -346,4 +352,22 @@ func sanitizeImageName(name string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-.")
+}
+
+// ValidateBuildPath checks that a file path falls within one of the allowed
+// directory prefixes. This prevents path-traversal attacks where a user
+// supplies a sensitive path like /etc/shadow.
+func ValidateBuildPath(path string, allowedPrefixes []string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("cannot resolve path: %w", err)
+	}
+	abs = filepath.Clean(abs)
+	for _, prefix := range allowedPrefixes {
+		prefix = filepath.Clean(prefix)
+		if strings.HasPrefix(abs, prefix+string(filepath.Separator)) || abs == prefix {
+			return nil
+		}
+	}
+	return fmt.Errorf("path %q is outside allowed build directories (%s)", abs, strings.Join(allowedPrefixes, ", "))
 }

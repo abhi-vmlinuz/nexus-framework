@@ -9,6 +9,42 @@ This document provides a comprehensive guide to the HTTP APIs provided by **Nexu
 All API endpoints are prefixed with:
 `http://<engine-host>:8081`
 
+## Authentication
+
+All endpoints require an API key via the `Authorization: Bearer <key>` header, except:
+- `GET /health` — public
+- `GET /metrics` — public
+
+If no key is configured (dev mode), all endpoints are open.
+
+```bash
+# Authenticated request
+curl -H "Authorization: Bearer your-api-key" http://localhost:8081/api/v1/challenges
+```
+
+### Error Responses
+
+- `401 Unauthorized` — missing or invalid API key
+- `429 Too Many Requests` — rate limit exceeded (10 requests/second)
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXUS_API_KEY` | *(auto-generated)* | API authentication key (auto-generated during install) |
+| `NEXUS_ALLOWED_BUILD_PATHS` | `/opt/nexus/challenges,/tmp` | Comma-separated list of allowed directories for Dockerfile/compose paths |
+| `NEXUS_MODE` | `dev` | `dev` or `prod` |
+| `NEXUS_PORT` | `8081` | Engine listen port |
+| `NEXUS_REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+| `NEXUS_REGISTRY_URL` | `localhost:5000` | Container registry URL |
+| `NEXUS_NODE_AGENT_ADDR` | `localhost:50051` | Node agent gRPC address |
+| `NEXUS_K3S_NAMESPACE` | `nexus-challenges` | Kubernetes namespace |
+| `NEXUS_ENGINE_URL` | `http://localhost:8081` | Used by the CLI to reach the engine |
+| `NEXUS_WG_ENDPOINT` | *(required in prod)* | Public IP:port for WireGuard |
+| `KUBECONFIG` | `/etc/rancher/k3s/k3s.yaml` | K3s kubeconfig path |
+
 ---
 
 ## Session API (Public)

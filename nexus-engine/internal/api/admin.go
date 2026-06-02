@@ -1,11 +1,12 @@
 package api
 
 import (
-	"fmt"
+	"bytes"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -147,6 +148,12 @@ func (h *adminHandler) UpdateConfig(c *gin.Context) {
 	})
 }
 
+// validURLRe matches http:// or https:// URLs.
+var validURLRe = regexp.MustCompile(`^https?://[a-zA-Z0-9][a-zA-Z0-9._:/@-]*$`)
+
+// validUsernameRe allows alphanumeric, underscores, hyphens, dots, and @.
+var validUsernameRe = regexp.MustCompile(`^[a-zA-Z0-9._@-]+$`)
+
 func (h *adminHandler) UpdateRegistry(c *gin.Context) {
 	var req struct {
 		URL      string `json:"url" binding:"required"`
@@ -159,11 +166,19 @@ func (h *adminHandler) UpdateRegistry(c *gin.Context) {
 		return
 	}
 
-	// 1. Update in-memory config
-	h.d.Cfg.Registry.URL = req.URL
-	h.d.Cfg.Registry.AuthType = req.AuthType
-	h.d.Cfg.Registry.Username = req.Username
-	h.d.Cfg.Registry.Password = req.Password
+	// Input validation to prevent injection.
+	if !validURLRe.MatchString(req.URL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid registry URL: must start with http:// or https://"})
+		return
+	}
+	if req.Username != "" && !validUsernameRe.MatchString(req.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username: only alphanumeric, ., _, @, - allowed"})
+		return
+	}
+
+	// 1. Update in-memory config (thread-safe via mutex).
+	h.d.Cfg.SetRegistryURL(req.URL)
+	h.d.Cfg.SetRegistryAuth(req.AuthType, req.Username, req.Password)
 
 	// 2. Persist to file
 	configDir := "/etc/nexus"
@@ -176,15 +191,18 @@ func (h *adminHandler) UpdateRegistry(c *gin.Context) {
 		}
 	}
 
-	// 3. Perform nerdctl login if needed
+	// 3. Perform nerdctl login if needed (no shell — safe from injection)
 	if req.AuthType != "none" && req.Username != "" && req.Password != "" {
-		loginCmd := fmt.Sprintf("echo %s | nerdctl login %s -u %s --password-stdin", req.Password, req.URL, req.Username)
-		cmd := exec.Command("sh", "-c", loginCmd)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		cmd := exec.Command("nerdctl", "login", req.URL, "-u", req.Username, "--password-stdin")
+		cmd.Stdin = strings.NewReader(req.Password)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		if err := cmd.Run(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "REGISTRY_LOGIN_FAILED",
 				"message": err.Error(),
-				"output":  string(out),
+				"output":  out.String(),
 			})
 			return
 		}
@@ -275,5 +293,9 @@ func sanitizeName(name string) string {
 			b.WriteRune(c)
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	result := strings.Trim(b.String(), "-")
+	if result == "" {
+		return "challenge"
+	}
+	return result
 }

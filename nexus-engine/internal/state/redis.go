@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -171,7 +172,9 @@ func (s *Store) SaveChallenge(ch Challenge) error {
 	if err := s.client.Set(s.ctx, fmt.Sprintf("challenge:%s", ch.ID), data, 0).Err(); err != nil {
 		return fmt.Errorf("save challenge: %w", err)
 	}
-	s.client.SAdd(s.ctx, "challenges", ch.ID)
+	if err := s.client.SAdd(s.ctx, "challenges", ch.ID).Err(); err != nil {
+		log.Printf("WARNING: failed to add %s to challenges set: %v", ch.ID, err)
+	}
 	return nil
 }
 
@@ -194,16 +197,24 @@ func (s *Store) ListChallenges() ([]Challenge, error) {
 	}
 	out := make([]Challenge, 0, len(ids))
 	for _, id := range ids {
-		if ch, err := s.GetChallenge(id); err == nil {
-			out = append(out, ch)
+		ch, err := s.GetChallenge(id)
+		if err != nil {
+			log.Printf("WARNING: cleaning stale challenge entry %s: %v", id, err)
+			s.client.SRem(s.ctx, "challenges", id)
+			continue
 		}
+		out = append(out, ch)
 	}
 	return out, nil
 }
 
 func (s *Store) DeleteChallenge(id string) error {
-	s.client.Del(s.ctx, fmt.Sprintf("challenge:%s", id))
-	s.client.SRem(s.ctx, "challenges", id)
+	if err := s.client.Del(s.ctx, fmt.Sprintf("challenge:%s", id)).Err(); err != nil {
+		return fmt.Errorf("delete challenge data: %w", err)
+	}
+	if err := s.client.SRem(s.ctx, "challenges", id).Err(); err != nil {
+		return fmt.Errorf("remove from challenges set: %w", err)
+	}
 	return nil
 }
 
@@ -224,7 +235,9 @@ func (s *Store) SaveBuildLog(challengeID, container, logContent string) error {
 		return fmt.Errorf("save build log: %w", err)
 	}
 	// Track which containers have logs for this challenge.
-	s.client.SAdd(s.ctx, fmt.Sprintf("build_log:%s", challengeID), container)
+	if err := s.client.SAdd(s.ctx, fmt.Sprintf("build_log:%s", challengeID), container).Err(); err != nil {
+		log.Printf("WARNING: failed to add %s to build_log set for %s: %v", container, challengeID, err)
+	}
 	return nil
 }
 
@@ -292,8 +305,12 @@ func (s *Store) SaveSession(sess Session) error {
 	if err := s.client.Set(s.ctx, key, data, ttl).Err(); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
-	s.client.SAdd(s.ctx, "active_sessions", sess.ID)
-	s.client.SAdd(s.ctx, fmt.Sprintf("user_sessions:%s", sess.UserID), sess.ID)
+	if err := s.client.SAdd(s.ctx, "active_sessions", sess.ID).Err(); err != nil {
+		log.Printf("WARNING: failed to add %s to active_sessions set: %v", sess.ID, err)
+	}
+	if err := s.client.SAdd(s.ctx, fmt.Sprintf("user_sessions:%s", sess.UserID), sess.ID).Err(); err != nil {
+		log.Printf("WARNING: failed to add %s to user_sessions:%s set: %v", sess.ID, sess.UserID, err)
+	}
 	return nil
 }
 
@@ -342,11 +359,18 @@ func (s *Store) ExtendSession(id string, extraMinutes int) error {
 }
 
 func (s *Store) DeleteSession(id string) error {
-	sess, _ := s.GetSession(id)
-	s.client.Del(s.ctx, fmt.Sprintf("session:%s", id))
+	sess, err := s.GetSession(id)
+	if err != nil {
+		log.Printf("WARNING: DeleteSession GetSession(%s): %v (continuing with cleanup)", id, err)
+	}
+	if delErr := s.client.Del(s.ctx, fmt.Sprintf("session:%s", id)).Err(); delErr != nil {
+		return fmt.Errorf("delete session data: %w", delErr)
+	}
 	s.client.Del(s.ctx, fmt.Sprintf("session:%s:desired", id))
 	s.client.Del(s.ctx, fmt.Sprintf("session:%s:observed", id))
-	s.client.SRem(s.ctx, "active_sessions", id)
+	if remErr := s.client.SRem(s.ctx, "active_sessions", id).Err(); remErr != nil {
+		log.Printf("WARNING: failed to remove %s from active_sessions: %v", id, remErr)
+	}
 	if sess.UserID != "" {
 		s.client.SRem(s.ctx, fmt.Sprintf("user_sessions:%s", sess.UserID), id)
 	}
@@ -462,7 +486,7 @@ func (s *Store) MarkReconcileSuccess(sessionID string, version int64, duration t
 
 	sess, err := s.GetSession(sessionID)
 	if err != nil {
-		return nil
+		return fmt.Errorf("MarkReconcileSuccess GetSession(%s): %w", sessionID, err)
 	}
 	sess.LastReconciledVersion = version
 	sess.LastReconciledAt = meta.LastReconciled
@@ -544,7 +568,9 @@ func (s *Store) SetVPNConfig(cfg *VPNConfig) error {
 		return fmt.Errorf("set vpn config: %w", err)
 	}
 	// Track allocated IPs so GetNextAvailableVPNIP can skip them.
-	s.client.SAdd(s.ctx, "vpn_ips", cfg.VPNip)
+	if err := s.client.SAdd(s.ctx, "vpn_ips", cfg.VPNip).Err(); err != nil {
+		log.Printf("WARNING: failed to add %s to vpn_ips set: %v", cfg.VPNip, err)
+	}
 	return nil
 }
 
@@ -559,21 +585,38 @@ func (s *Store) DeleteVPNConfig(userID string) error {
 
 // GetNextAvailableVPNIP returns the next free IP in 10.8.0.2-10.8.0.254.
 // Returns an error if the pool is exhausted (253 concurrent users).
+// Deprecated: Use ClaimNextAvailableVPNIP for atomic allocation.
 func (s *Store) GetNextAvailableVPNIP() (string, error) {
-	allocated, err := s.client.SMembers(s.ctx, "vpn_ips").Result()
+	return s.ClaimNextAvailableVPNIP()
+}
+
+// claimVPNIPScript atomically finds and claims a free VPN IP.
+var claimVPNIPScript = redis.NewScript(`
+local allocated = redis.call('SMEMBERS', KEYS[1])
+local taken = {}
+for _, ip in ipairs(allocated) do taken[ip] = true end
+for i = 2, 254 do
+    local ip = '10.8.0.' .. i
+    if not taken[ip] then
+        redis.call('SADD', KEYS[1], ip)
+        return ip
+    end
+end
+return nil
+`)
+
+// ClaimNextAvailableVPNIP atomically finds and claims the next free IP
+// in 10.8.0.2-10.8.0.254 using a Lua script. Returns an error if the
+// pool is exhausted (253 concurrent users).
+func (s *Store) ClaimNextAvailableVPNIP() (string, error) {
+	result, err := claimVPNIPScript.Run(s.ctx, s.client, []string{"vpn_ips"}).Result()
 	if err != nil {
-		return "", fmt.Errorf("read vpn_ips set: %w", err)
+		return "", fmt.Errorf("no available VPN IPs: %w", err)
 	}
-	used := make(map[string]bool, len(allocated))
-	for _, ip := range allocated {
-		used[ip] = true
+	ip, ok := result.(string)
+	if !ok {
+		return "", fmt.Errorf("unexpected Lua script return type: %T", result)
 	}
-	for i := 2; i <= 254; i++ {
-		candidate := fmt.Sprintf("10.8.0.%d", i)
-		if !used[candidate] {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("VPN IP pool exhausted (253/253 addresses in use)")
+	return ip, nil
 }
 

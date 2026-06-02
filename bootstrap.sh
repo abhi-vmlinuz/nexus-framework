@@ -170,18 +170,25 @@ if ! curl --fail --retry 3 -sSL "${REGISTRY_URL}/nexus-installer-linux-${ARCH}" 
 fi
 
 # ── Verify checksum ──────────────────────────────────────────────────────────
-if command -v sha256sum &>/dev/null; then
-    echo -e "${BLUE}Verifying checksum...${NC}"
-    if curl --fail --retry 3 -sSL "${REGISTRY_URL}/checksums.txt" -o "${TEMP_DIR}/checksums.txt" 2>/dev/null; then
-        EXPECTED_SHA=$(grep "nexus-installer-linux-${ARCH}" "${TEMP_DIR}/checksums.txt" | cut -d' ' -f1 || true)
-        if [ -n "$EXPECTED_SHA" ]; then
-            (cd "${TEMP_DIR}" && echo "${EXPECTED_SHA}  nexus-installer" | sha256sum -c -)
-        else
-            echo -e "${RED}Warning: Checksum for installer not found in checksums.txt. Skipping verification.${NC}"
-        fi
-    else
-        echo -e "${RED}Warning: Failed to download checksums.txt. Skipping verification.${NC}"
-    fi
+if ! command -v sha256sum &>/dev/null; then
+    echo -e "${RED}Error: sha256sum is required for secure installation.${NC}"
+    echo -e "${RED}Install coreutils package and retry.${NC}"
+    exit 1
+fi
+
+echo -e "${BLUE}Verifying checksum...${NC}"
+if ! curl --fail --retry 3 -sSL "${REGISTRY_URL}/checksums.txt" -o "${TEMP_DIR}/checksums.txt"; then
+    echo -e "${RED}Error: Failed to download checksums.txt. Cannot verify installer integrity.${NC}"
+    exit 1
+fi
+EXPECTED_SHA=$(grep "nexus-installer-linux-${ARCH}" "${TEMP_DIR}/checksums.txt" | cut -d' ' -f1 || true)
+if [ -z "$EXPECTED_SHA" ]; then
+    echo -e "${RED}Error: Checksum for installer not found in checksums.txt. Cannot verify installer integrity.${NC}"
+    exit 1
+fi
+if ! (cd "${TEMP_DIR}" && echo "${EXPECTED_SHA}  nexus-installer" | sha256sum -c -); then
+    echo -e "${RED}Error: Checksum verification failed. The downloaded installer may be corrupted or tampered with.${NC}"
+    exit 1
 fi
 
 chmod +x "${INSTALLER_BIN}"

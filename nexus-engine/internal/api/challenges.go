@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -91,12 +92,16 @@ func buildMetadataFromResult(result *registry.BuildResult, cfg registry.Registry
 			Error:      c.Error,
 		}
 	}
+	registryStr := ""
+	if idx := strings.LastIndex(result.Image, "/"); idx > 0 {
+		registryStr = result.Image[:idx]
+	}
 	return BuildMetadata{
 		Status:       "success",
 		StartedAt:    result.StartedAt.Format(time.RFC3339),
 		CompletedAt:  result.StartedAt.Add(result.Duration).Format(time.RFC3339),
 		DurationMs:   result.Duration.Milliseconds(),
-		Registry:     result.Image[:strings.LastIndex(result.Image, "/")],
+		Registry:     registryStr,
 		RegistryAuth: cfg,
 		Tooling:      result.Tooling,
 		Ready:        true,
@@ -531,11 +536,16 @@ func (h *challengeHandler) streamBuildLogs(c *gin.Context, challengeID, containe
 	// Track what we've already sent to avoid duplicates.
 	sentBytes := make(map[string]int)
 
+	// Track idle time — close the stream after 30 seconds of no new data.
+	lastDataTime := time.Now()
+	const idleTimeout = 30 * time.Second
+
 	for {
 		select {
 		case <-c.Request.Context().Done():
 			return
 		case <-ticker.C:
+			gotNewData := false
 			if containerFilter != "" {
 				logContent, err := h.d.Store.GetBuildLog(challengeID, containerFilter)
 				if err != nil {
@@ -544,9 +554,12 @@ func (h *challengeHandler) streamBuildLogs(c *gin.Context, challengeID, containe
 				offset := sentBytes[containerFilter]
 				if len(logContent) > offset {
 					newData := logContent[offset:]
-					fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", newData)
+					event := map[string]string{"log": newData}
+					jsonData, _ := json.Marshal(event)
+					fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", string(jsonData))
 					sentBytes[containerFilter] = len(logContent)
 					flusher.Flush()
+					gotNewData = true
 				}
 			} else {
 				logs, err := h.d.Store.GetAllBuildLogs(challengeID)
@@ -557,17 +570,23 @@ func (h *challengeHandler) streamBuildLogs(c *gin.Context, challengeID, containe
 					offset := sentBytes[name]
 					if len(content) > offset {
 						newData := content[offset:]
-						fmt.Fprintf(c.Writer, "event: log\ndata: {\"container\":\"%s\",\"log\":\"%s\"}\n\n", name, newData)
+						event := map[string]string{"container": name, "log": newData}
+						jsonData, _ := json.Marshal(event)
+						fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", string(jsonData))
 						sentBytes[name] = len(content)
 						flusher.Flush()
+						gotNewData = true
 					}
 				}
 			}
 
-			// Check if build is complete (all logs stop growing).
-			// After 30 seconds of no new data, send done event and close.
-			// This is a simple heuristic — a proper implementation would
-			// track build status via a pub/sub channel.
+			if gotNewData {
+				lastDataTime = time.Now()
+			} else if time.Since(lastDataTime) > idleTimeout {
+				fmt.Fprintf(c.Writer, "event: done\ndata: {\"status\":\"complete\"}\n\n")
+				flusher.Flush()
+				return
+			}
 		}
 	}
 }

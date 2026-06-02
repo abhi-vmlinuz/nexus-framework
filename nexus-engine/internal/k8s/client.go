@@ -110,6 +110,11 @@ type Client struct {
 	namespace string
 }
 
+// k8sCtx returns a context with a 30-second timeout for K8s API calls.
+func k8sCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 30*time.Second)
+}
+
 // New creates a Client, auto-detecting in-cluster config then falling back to kubeconfig.
 func New(namespace string) (*Client, error) {
 	cfg, err := rest.InClusterConfig()
@@ -129,7 +134,8 @@ func New(namespace string) (*Client, error) {
 	}
 
 	// Ensure namespace exists.
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	if _, err := cs.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{}); err != nil {
 		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
 			Name:   namespace,
@@ -150,7 +156,8 @@ func (c *Client) Clientset() *kubernetes.Clientset {
 // SpawnPod creates a challenge pod and waits for it to receive a pod IP.
 // Returns PodInfo with the pod name and cluster IP on success.
 func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	podName := podNamePrefix + req.SessionID
 
 	var podContainers []corev1.Container
@@ -197,6 +204,11 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 
 			// Add Readiness Probe
 			if ct.ReadinessProbe != nil {
+				// Apply sensible defaults for zero-value probe fields.
+				if ct.ReadinessProbe.TimeoutSeconds == 0 { ct.ReadinessProbe.TimeoutSeconds = 5 }
+				if ct.ReadinessProbe.PeriodSeconds == 0 { ct.ReadinessProbe.PeriodSeconds = 10 }
+				if ct.ReadinessProbe.FailureThreshold == 0 { ct.ReadinessProbe.FailureThreshold = 3 }
+
 				probe := &corev1.Probe{
 					InitialDelaySeconds: int32(ct.ReadinessProbe.InitialDelaySeconds),
 					PeriodSeconds:       int32(ct.ReadinessProbe.PeriodSeconds),
@@ -261,6 +273,11 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 
 		// Add Readiness Probe
 		if req.ReadinessProbe != nil {
+			// Apply sensible defaults for zero-value probe fields.
+			if req.ReadinessProbe.TimeoutSeconds == 0 { req.ReadinessProbe.TimeoutSeconds = 5 }
+			if req.ReadinessProbe.PeriodSeconds == 0 { req.ReadinessProbe.PeriodSeconds = 10 }
+			if req.ReadinessProbe.FailureThreshold == 0 { req.ReadinessProbe.FailureThreshold = 3 }
+
 			probe := &corev1.Probe{
 				InitialDelaySeconds: int32(req.ReadinessProbe.InitialDelaySeconds),
 				PeriodSeconds:       int32(req.ReadinessProbe.PeriodSeconds),
@@ -346,7 +363,8 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 
 // TerminatePod deletes a challenge pod. Idempotent — returns nil if not found.
 func (c *Client) TerminatePod(sessionID string) error {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	podName := podNamePrefix + sessionID
 	err := c.clientset.CoreV1().Pods(c.namespace).Delete(ctx, podName, metav1.DeleteOptions{})
 	if err != nil && !isNotFound(err) {
@@ -358,7 +376,8 @@ func (c *Client) TerminatePod(sessionID string) error {
 // GetPodStatus returns the Kubernetes pod phase string.
 // Returns "not_found" if the pod does not exist.
 func (c *Client) GetPodStatus(sessionID string) (string, error) {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	pod, err := c.clientset.CoreV1().Pods(c.namespace).Get(ctx, podNamePrefix+sessionID, metav1.GetOptions{})
 	if err != nil {
 		if isNotFound(err) {
@@ -371,7 +390,8 @@ func (c *Client) GetPodStatus(sessionID string) (string, error) {
 
 // ExtendPodTTL updates the TTL annotation on a running pod.
 func (c *Client) ExtendPodTTL(sessionID string, newTotalMinutes int) error {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	patch := fmt.Sprintf(`{"metadata":{"annotations":{%q:%q}}}`,
 		annotationTTL, fmt.Sprintf("%dm", newTotalMinutes))
 	_, err := c.clientset.CoreV1().Pods(c.namespace).Patch(
@@ -381,7 +401,8 @@ func (c *Client) ExtendPodTTL(sessionID string, newTotalMinutes int) error {
 
 // ListPods returns all nexus-managed pods (filtered by app=nexus-challenge).
 func (c *Client) ListPods() ([]ResourceInfo, error) {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	pods, err := c.clientset.CoreV1().Pods(c.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", labelApp, labelAppValue),
 	})
@@ -405,7 +426,8 @@ func (c *Client) ListPods() ([]ResourceInfo, error) {
 // CleanupOrphanedPods deletes pods with expired TTL annotations or in terminal phases.
 // Returns the count of pods deleted.
 func (c *Client) CleanupOrphanedPods() (int, error) {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 	pods, err := c.clientset.CoreV1().Pods(c.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", labelApp, labelAppValue),
 	})
@@ -458,7 +480,8 @@ func sanitizeK8sName(name string) string {
 
 // EnsureImagePullSecret creates or updates a docker-registry secret in the namespace.
 func (c *Client) EnsureImagePullSecret(name, registry, user, pass string) error {
-	ctx := context.Background()
+	ctx, cancel := k8sCtx()
+	defer cancel()
 
 	// Build the docker config JSON
 	auth := fmt.Sprintf("%s:%s", user, pass)

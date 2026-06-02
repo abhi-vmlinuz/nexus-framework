@@ -32,9 +32,10 @@ func minimalDeps(t *testing.T) api.Deps {
 			DefaultTTLMinutes: 60,
 			MaxPerUser:        0,
 		},
-		Registry:   config.RegistryConfig{URL: "localhost:5000"},
-		NodeAgent:  config.NodeAgentConfig{Insecure: true},
-		Reconciler: config.ReconcilerConfig{MaxWorkers: 1},
+		Registry:          config.RegistryConfig{URL: "localhost:5000"},
+		NodeAgent:         config.NodeAgentConfig{Insecure: true},
+		Reconciler:        config.ReconcilerConfig{MaxWorkers: 1},
+		AllowedBuildPaths: []string{"/opt/nexus/challenges", "/tmp"},
 	}
 
 	// nil k8s and agent — handlers referencing them will only be exercised by
@@ -46,7 +47,7 @@ func minimalDeps(t *testing.T) api.Deps {
 		Store:      store,
 		K8s:        nil,
 		NodeAgent:  nil,
-		Builder:    registry.NewBuilder(cfg.Registry),
+		Builder:    registry.NewBuilder(cfg.Registry, cfg.AllowedBuildPaths),
 		Controller: ctrl,
 		Cfg:        cfg,
 	}

@@ -6,6 +6,7 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tonic::Status;
@@ -14,14 +15,20 @@ use tracing::{info, warn};
 const WG_CONFIG_PATH: &str = "/etc/wireguard/wg0.conf";
 const HANDSHAKE_ACTIVE_SECS: i64 = 180;
 
+// Mutex to serialise concurrent wg0.conf file modifications.
+static WG_CONF_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 /// Ensure a WireGuard peer exists (idempotent).
 /// 1. Removes any existing block for this user from wg0.conf (persistence).
 /// 2. Appends the new peer block to wg0.conf (persistence).
 /// 3. Adds the peer to the live wg0 interface via `wg set` (no tmp file, AppArmor-safe).
 pub fn ensure_peer(user_id: &str, public_key: &str, vpn_ip: &str) -> Result<(), Status> {
-    // Update persistent config file first.
-    remove_peer_block(user_id)?;
-    append_peer_block(user_id, public_key, vpn_ip)?;
+    // Update persistent config file first — serialised via mutex.
+    {
+        let _lock = WG_CONF_LOCK.lock().unwrap();
+        remove_peer_block(user_id)?;
+        append_peer_block(user_id, public_key, vpn_ip)?;
+    }
     // Add to live interface directly — avoids AppArmor restriction on tmp files.
     add_peer_to_runtime(public_key, vpn_ip)
 }
@@ -29,7 +36,10 @@ pub fn ensure_peer(user_id: &str, public_key: &str, vpn_ip: &str) -> Result<(), 
 /// Revoke a WireGuard peer (idempotent).
 /// Removes from wg0.conf (persistence) and from the live interface.
 pub fn revoke_peer(user_id: &str, public_key: &str) -> Result<(), Status> {
-    remove_peer_block(user_id)?;
+    {
+        let _lock = WG_CONF_LOCK.lock().unwrap();
+        remove_peer_block(user_id)?;
+    }
     // Remove from live interface directly — no file needed.
     let out = Command::new("wg")
         .args(["set", "wg0", "peer", public_key, "remove"])

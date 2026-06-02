@@ -12,6 +12,7 @@ import (
 	"github.com/nexus-oss/nexus/nexus-engine/internal/nodeagent"
 	"github.com/nexus-oss/nexus/nexus-engine/internal/registry"
 	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"golang.org/x/time/rate"
 )
 
 // Deps bundles all handler dependencies.
@@ -26,6 +27,9 @@ type Deps struct {
 
 // Register wires all HTTP routes onto the gin engine.
 func Register(r *gin.Engine, d Deps) {
+	// Rate limiting middleware — 10 requests/sec per process (global).
+	r.Use(RateLimit(10))
+
 	// Health
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -38,6 +42,9 @@ func Register(r *gin.Engine, d Deps) {
 
 	// Metrics (prometheus)
 	r.GET("/metrics", metricsHandler())
+
+	// Auth middleware — protects all /api/v1/* endpoints
+	r.Use(RequireAPIKey(d.Cfg))
 
 	// Debug endpoints
 	dbg := r.Group("/debug")
@@ -91,5 +98,18 @@ func Register(r *gin.Engine, d Deps) {
 		v1.GET("/vpn/config", vh.Config)
 		v1.GET("/vpn/status", vh.Status)
 		v1.POST("/vpn/regenerate", vh.Regenerate)
+	}
+}
+
+// RateLimit returns a gin middleware that limits requests to rps per second
+// using a token-bucket rate limiter. Excess requests receive HTTP 429.
+func RateLimit(rps float64) gin.HandlerFunc {
+	limiter := rate.NewLimiter(rate.Limit(rps), 10)
+	return func(c *gin.Context) {
+		if !limiter.Allow() {
+			c.AbortWithStatusJSON(429, gin.H{"error": "rate limit exceeded"})
+			return
+		}
+		c.Next()
 	}
 }

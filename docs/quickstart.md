@@ -38,6 +38,8 @@ curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | b
 
 The installer will guide you through the setup interactively (mode, registry, VPN, etc.).
 
+> **API Key**: The installer generates an API key during setup and writes it to `/etc/nexus/engine.env` and `~/.config/nexus/config.json`. All API requests require this key. See [API Authentication](api.md#authentication) for details.
+
 > **Channels:**
 > ```bash
 > # Latest stable release (default)
@@ -152,6 +154,8 @@ sudo systemctl stop nexus-engine nexus-node-agent
 |---|---|---|
 | `NEXUS_MODE` | `dev` | `dev` or `prod` |
 | `NEXUS_PORT` | `8081` | Engine HTTP port |
+| `NEXUS_API_KEY` | *(auto-generated)* | API authentication key (auto-generated during install) |
+| `NEXUS_ALLOWED_BUILD_PATHS` | `/opt/nexus/challenges,/tmp` | Comma-separated list of allowed directories for Dockerfile/compose paths |
 | `NEXUS_REDIS_URL` | `redis://localhost:6379` | Redis connection |
 | `NEXUS_REGISTRY_URL` | `localhost:5000` | Container registry |
 | `NEXUS_NODE_AGENT_ADDR` | `localhost:50051` | Node agent gRPC |

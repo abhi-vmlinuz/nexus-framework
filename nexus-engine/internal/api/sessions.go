@@ -146,13 +146,15 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		}
 
 		// Save grant record.
-		h.d.Store.SaveGrant(state.GrantRecord{
+		if err := h.d.Store.SaveGrant(state.GrantRecord{
 			SessionID: sessionID,
 			UserID:    req.UserID,
 			PodIP:     podInfo.PodIP,
 			Status:    "applied",
 			GrantedAt: now,
-		})
+		}); err != nil {
+			log.Printf("WARNING: failed to save grant for session %s: %v", sessionID, err)
+		}
 	}
 
 	// Persist session.
@@ -329,17 +331,17 @@ func (h *sessionHandler) Extend(c *gin.Context) {
 	oldExpiry := sess.ExpiresAt
 	newExpiry := oldExpiry.Add(time.Duration(req.DurationMinutes) * time.Minute)
 
-	// Update pod TTL annotation FIRST.
-	// Kubernetes expects this to be the total lifetime since pod creation.
-	newTotalLifetime := int(newExpiry.Sub(sess.CreatedAt).Minutes())
-	if err := h.d.K8s.ExtendPodTTL(id, newTotalLifetime); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to extend K8s pod TTL: %v", err)})
-		return
-	}
-
+	// 1. Extend Redis TTL first — if this fails, we don't touch K8s.
 	if err := h.d.Store.ExtendSession(id, req.DurationMinutes); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to extend session in store: %v", err)})
 		return
+	}
+
+	// 2. Then extend K8s pod TTL (if this fails, Redis is ahead — safer than opposite).
+	// Kubernetes expects this to be the total lifetime since pod creation.
+	newTotalLifetime := int(newExpiry.Sub(sess.CreatedAt).Minutes())
+	if err := h.d.K8s.ExtendPodTTL(id, newTotalLifetime); err != nil {
+		log.Printf("WARNING: K8s extend failed but Redis extended: %v", err)
 	}
 
 	if _, err := h.d.Store.TouchDesiredVersion(id, "session_extend"); err != nil {
