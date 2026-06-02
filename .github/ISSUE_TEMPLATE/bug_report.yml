@@ -1,0 +1,80 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in the details below so we can reproduce and fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: Nexus Version
+      description: Output of `nexus --version` or the release tag you installed
+      placeholder: "v0.1.1-beta"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - nexus-engine
+        - nexus-cli
+        - nexus-node-agent
+        - nexus-installer
+        - bootstrap.sh
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: distro
+    attributes:
+      label: Linux Distribution
+      options:
+        - Ubuntu 22.04+
+        - Debian 12+
+        - Rocky Linux 9
+        - RHEL 9
+        - Fedora 39+
+        - Arch Linux
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect to happen vs what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Install with `curl -fsSL ... | bash`
+        2. Run `nexus challenge create ...`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any error output, engine logs, or installer logs.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Any additional environment details (cloud provider, WireGuard setup, registry type, etc.)
