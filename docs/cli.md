@@ -1,6 +1,6 @@
 # Nexus CLI Reference Manual
 
-The `nexus` command-line interface (CLI) is an operator tool for debugging, configuration, and monitoring the Nexus Engine. It is not the primary interface for managing the CTF platform — that role belongs to the CTF platform backend (e.g., ZecurX) which communicates with the Engine API directly.
+The `nexus` command-line interface (CLI) is an operator tool for debugging, configuration, and monitoring the Nexus Engine. It is not the primary interface for managing the CTF platform — that role belongs to the CTF platform backend which communicates with the Engine API directly.
 
 Use the CLI to:
 - Inspect engine health, sessions, and cluster state
