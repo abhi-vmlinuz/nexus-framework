@@ -179,6 +179,17 @@ func (c *Config) Display() {
 func (c *Config) Set(key, value string) error {
 	parts := strings.Split(key, ".")
 
+	// Top-level keys
+	if len(parts) == 1 {
+		switch key {
+		case "api_key":
+			c.APIKey = value
+			return c.Save()
+		default:
+			return fmt.Errorf("unknown key: %s (expected category.field format, e.g. engine.url)", key)
+		}
+	}
+
 	if len(parts) < 2 {
 		return fmt.Errorf("invalid key format, expected category.field")
 	}
