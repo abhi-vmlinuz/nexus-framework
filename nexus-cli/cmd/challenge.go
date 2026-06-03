@@ -240,13 +240,12 @@ func newChallengeRebuildCmd(c *client.Client) *cobra.Command {
 			return ids, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("🔨 Rebuilding %s…\n", args[0])
-			result, err := c.RebuildChallenge(args[0])
+			fmt.Printf("Rebuilding %s...\n", args[0])
+			ch, err := c.RebuildChallenge(args[0])
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Rebuilt: image=%v  duration=%vms\n",
-				result["image"], result["duration_ms"])
+			fmt.Printf("Rebuilt: id=%s  image=%s\n", ch.ID, ch.Image)
 			return nil
 		},
 	}

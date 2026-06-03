@@ -220,17 +220,23 @@ type RegisterChallengeRequest struct {
 }
 
 func (c *Client) RegisterChallenge(req RegisterChallengeRequest) (*Challenge, error) {
-	var resp Challenge
-	return &resp, c.post("/api/v1/challenges", req, &resp)
+	var resp struct {
+		Challenge Challenge `json:"challenge"`
+	}
+	err := c.post("/api/v1/challenges", req, &resp)
+	return &resp.Challenge, err
 }
 
 func (c *Client) DeleteChallenge(id string) error {
 	return c.delete("/api/v1/challenges/" + id)
 }
 
-func (c *Client) RebuildChallenge(id string) (map[string]any, error) {
-	var resp map[string]any
-	return resp, c.post("/api/v1/challenges/"+id+"/rebuild", nil, &resp)
+func (c *Client) RebuildChallenge(id string) (*Challenge, error) {
+	var resp struct {
+		Challenge Challenge `json:"challenge"`
+	}
+	err := c.post("/api/v1/challenges/"+id+"/rebuild", nil, &resp)
+	return &resp.Challenge, err
 }
 
 func (c *Client) ListSessions() ([]Session, error) {
