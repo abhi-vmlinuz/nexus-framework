@@ -374,48 +374,50 @@ If no key is configured, all endpoints are open (auth disabled).
 
 ## CLI Reference
 
+Nexus OSS provides an operator CLI client (`nexus`) to monitor the engine, register challenges, control player sessions, and launch a live TUI terminal dashboard.
+
+For a comprehensive guide detailing all command parameters, options, and TUI shortcuts, please refer to the **[CLI Reference Manual](docs/cli.md)**.
+
 ```
 nexus [command]
 
 Available Commands:
-  challenge   Manage CTF challenge definitions
-  session     Inspect and manage player sessions
-  compose     Deploy multi-container challenge stacks
-  config      Show or update Nexus configuration
-  status      Health check against the engine
   tui         Open the live TUI dashboard
+  status      Show engine health and cluster overview
+  challenge   Manage CTF challenge definitions (register, list, delete, rebuild)
+  session     Inspect and manage player sessions (create, list, get, terminate, extend)
+  admin       Operator tasks (cluster health audit, manual reconcile trigger)
+  config      View, initialize, validate, or set CLI and Engine configuration keys
+  version     Print the version number of nexus-cli
+  completion  Generate autocomplete scripts for your shell
 
 Global Flags:
-  --engine string   Override the Nexus engine URL
+  --engine string   Override the Nexus engine URL (default: http://localhost:8081)
 ```
 
-### Examples
+### Quick Examples
 
 ```bash
-# Check engine and redis health
+# Check engine and system health
 nexus status
 
-# Open the live operator dashboard
+# Open the live terminal dashboard TUI
 nexus tui
 
-# List all deployed challenges
+# Register a single-container challenge
+nexus challenge register --name pwn-101 --dockerfile ./Dockerfile --ports 4444
+
+# Register a multi-container challenge via docker-compose
+nexus challenge register --name web-db --compose ./docker-compose.yml
+
+# List all registered challenges
 nexus challenge list
 
-# Create a new challenge from a docker-compose file
-nexus compose up ./testing/pwn-101/docker-compose.yml
+# Deployed sessions status overview
+nexus session list
 
-# View current configuration (Local CLI + Remote Engine)
-nexus config view
-
-# Hot-reload the engine with new defaults
-nexus config set challenge.cpu 1.0
-nexus config set session.ttl 120
-
-# Configure Docker Hub, GHCR, or ECR (Interactive)
+# Interactively configure Engine to link with Docker Hub/GHCR/ECR
 nexus config registry
-
-# Validate connectivity
-nexus config validate
 ```
 
 ### Shell Completion
