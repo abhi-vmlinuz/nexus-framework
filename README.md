@@ -14,7 +14,6 @@
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Components](#components)
-- [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [CLI Reference](#cli-reference)
@@ -78,17 +77,6 @@ A privileged Rust daemon that runs alongside the engine on each node. It handles
 A full-screen TUI installer written in Go using Bubbletea. Replaces the legacy `deploy/setup.sh` with an interactive, distro-aware setup experience that handles the complete 9-phase bootstrap automatically.
 
 ---
-
-## Prerequisites
-
-| Dependency | Minimum Version | Notes |
-|---|---|---|
-| Linux x86_64 | Kernel 5.6+ | WireGuard requires 5.6+; CachyOS/Fedora kernels work great |
-| Go | 1.21+ | For building `nexus-engine` and `nexus-cli` |
-| Rust + Cargo | 1.70+ | For building `nexus-node-agent` |
-| `git` | Any | To clone the repository |
-| `curl` | Any | Used by the K3s installer |
-| `sudo` | Any | Required for system-level operations |
 
 > **Binary Distribution**: Prebuilt binaries are available for `amd64` and `arm64`. The installer automatically downloads and verifies these, falling back to local compilation only if necessary.
 
@@ -199,10 +187,10 @@ chmod +x build-installer.sh
 
 | Distro Family | Package Manager | Status |
 |---|---|---|
-| Debian / Ubuntu | `apt` | ✅ Supported |
-| Fedora / RHEL / CentOS | `dnf` / `yum` | ✅ Supported (SELinux-aware) |
-| Arch Linux / Manjaro | `pacman` | ✅ Supported |
-| openSUSE | `zypper` | ✅ Supported (not tested yet) |
+| Debian / Ubuntu | `apt` | Tested |
+| Fedora / RHEL / CentOS | `dnf` / `yum` | Tested |
+| Arch Linux / Manjaro | `pacman` | ⚠️ Experimental |
+| openSUSE | `zypper` | ⚠️ Experimental |
 
 ---
 
@@ -211,11 +199,11 @@ chmod +x build-installer.sh
 
 While user-specific settings are in your home directory, the **Nexus Engine** maintains its global state at:
 - **Config Path**: `/etc/nexus/engine.env`
-- **Permissions**: `0644` (managed by `sudo`)
+- **Permissions**: `0644`
 
 This file is automatically synchronized when you use the `nexus config registry` or `nexus config set` commands.
 
-### Runtime Configuration (Hot-Reload)
+### Runtime Configuration
 
 Nexus supports "Soft Config" hot-reloading. Parameters like resource limits and session TTLs can be updated live without restarting the engine.
 
@@ -293,7 +281,7 @@ nexus config registry
 ```
 This walks through Docker Hub, GHCR, AWS ECR, or custom registry setup.
 
-**Via API (Programmatic):**
+**Via API:**
 ```bash
 # Switch to GHCR
 curl -X PUT http://localhost:8081/api/v1/admin/registry \
@@ -532,11 +520,7 @@ nexus-oss/
 │   ├── architecture.md
 │   ├── api.md
 │   └── quickstart.md
-├── scripts/
-│   └── smoke_test.sh           # Post-install smoke test
-└── testing/
-    ├── pwn-101/                # Example single-container challenge
-    └── multi-pwn/              # Example multi-container challenge stack
+
 ```
 
 ---
