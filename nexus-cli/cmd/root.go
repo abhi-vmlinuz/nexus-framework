@@ -7,9 +7,9 @@ import (
 
 	"strconv"
 
-	"github.com/nexus-oss/nexus/nexus-cli/client"
-	"github.com/nexus-oss/nexus/nexus-cli/config"
-	"github.com/nexus-oss/nexus/nexus-cli/tui"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-cli/client"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-cli/config"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-cli/tui"
 	"github.com/spf13/cobra"
 
 	tea "github.com/charmbracelet/bubbletea"

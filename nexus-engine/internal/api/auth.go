@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/config"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
 )
 
 // RequireAPIKey returns gin middleware that enforces API key authentication.

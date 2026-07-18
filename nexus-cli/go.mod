@@ -1,4 +1,4 @@
-module github.com/nexus-oss/nexus/nexus-cli
+module github.com/abhi-vmlinuz/nexus-framework/nexus-cli
 
 go 1.24
 

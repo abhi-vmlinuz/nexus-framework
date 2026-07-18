@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/config"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/controller"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/k8s"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/nodeagent"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/registry"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/controller"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/nodeagent"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 	"golang.org/x/time/rate"
 )
 

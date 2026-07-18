@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/registry"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 )
 
 type challengeHandler struct{ d Deps }

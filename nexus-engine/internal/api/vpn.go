@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 )
 
 // vpnHandler serves WireGuard config endpoints.

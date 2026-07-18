@@ -5,7 +5,7 @@ set -e
 # Nexus Framework Bootstrap Installer
 #
 # Usage:
-#   curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | sudo bash
+#   curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | sudo bash
 #
 # Channels:
 #   (default)          Install latest stable release (auto-detected)
@@ -113,7 +113,7 @@ fi
 
 # ── Resolve release tag ──────────────────────────────────────────────────────
 # Priority: RELEASE_TAG env var > --tag flag > channel detection
-GITLAB_PROJECT="abhi-vmlinuz%2Fnexus-oss"
+GITLAB_PROJECT="abhi-vmlinuz%2Fnexus-framework"
 GITLAB_API="https://gitlab.com/api/v4/projects/${GITLAB_PROJECT}"
 
 if [ -n "${RELEASE_TAG:-}" ]; then
@@ -159,13 +159,13 @@ except:
 fi
 
 # ── Download installer ───────────────────────────────────────────────────────
-REGISTRY_URL="${GITLAB_API}/packages/generic/nexus-oss/${RELEASE_TAG}"
+REGISTRY_URL="${GITLAB_API}/packages/generic/nexus-framework/${RELEASE_TAG}"
 INSTALLER_BIN="${TEMP_DIR}/nexus-installer"
 
 echo -e "${BLUE}Downloading prebuilt installer for Linux ${ARCH} (Tag: ${RELEASE_TAG})...${NC}"
 if ! curl --fail --retry 3 -sSL "${REGISTRY_URL}/nexus-installer-linux-${ARCH}" -o "${INSTALLER_BIN}"; then
     echo -e "${RED}Error: Failed to download installer for tag '${RELEASE_TAG}'.${NC}"
-    echo -e "${RED}Check available releases at: https://gitlab.com/abhi-vmlinuz/nexus-oss/-/releases${NC}"
+    echo -e "${RED}Check available releases at: https://gitlab.com/abhi-vmlinuz/nexus-framework/-/releases${NC}"
     exit 1
 fi
 

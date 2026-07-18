@@ -22,9 +22,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/nexus-oss/nexus/nexus-engine/internal/k8s"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/nodeagent"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/nodeagent"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 )
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────

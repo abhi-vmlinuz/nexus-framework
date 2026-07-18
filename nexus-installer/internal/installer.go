@@ -324,7 +324,7 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 	if strings.HasSuffix(Version, "-dev") {
 		releaseTag = "latest-dev"
 	}
-	baseURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/abhi-vmlinuz%%2Fnexus-oss/packages/generic/nexus-oss/%s", releaseTag)
+	baseURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/abhi-vmlinuz%%2Fnexus-framework/packages/generic/nexus-framework/%s", releaseTag)
 
 	binaries := []string{"nexus-engine", "nexus", "nexus-node-agent"}
 	binaryMap := map[string]string{

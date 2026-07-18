@@ -1,6 +1,6 @@
 package main
 
-import "github.com/nexus-oss/nexus/nexus-cli/cmd"
+import "github.com/abhi-vmlinuz/nexus-framework/nexus-cli/cmd"
 
 func main() {
 	cmd.Execute()

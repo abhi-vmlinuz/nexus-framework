@@ -5,8 +5,8 @@ Thanks for your interest in contributing. This guide covers everything you need 
 ## Quick Start
 
 ```bash
-git clone https://github.com/abhi-vmlinuz/nexus-oss.git
-cd nexus-oss
+git clone https://github.com/abhi-vmlinuz/nexus-framework.git
+cd nexus-framework
 ```
 
 ### Prerequisites
@@ -44,7 +44,7 @@ cd nexus-node-agent && cargo test && cd ..
 ## Project Structure
 
 ```
-nexus-oss/
+nexus-framework/
 ├── nexus-engine/        # Go (Gin) — REST API server
 │   ├── cmd/             # Entrypoint
 │   ├── internal/
@@ -133,7 +133,7 @@ chore: bump version to 0.1.2
 
 ## Reporting Bugs
 
-Use the [Bug Report](https://github.com/abhi-vmlinuz/nexus-oss/issues/new?template=bug_report.yml) issue template. Include:
+Use the [Bug Report](https://github.com/abhi-vmlinuz/nexus-framework/issues/new?template=bug_report.yml) issue template. Include:
 
 - Nexus version (`nexus --version`)
 - Linux distro and version
@@ -171,4 +171,4 @@ git push sync main --tags
 
 ## Questions?
 
-Open a [Discussion](https://github.com/abhi-vmlinuz/nexus-oss/discussions) or join the issue tracker.
+Open a [Discussion](https://github.com/abhi-vmlinuz/nexus-framework/discussions) or join the issue tracker.

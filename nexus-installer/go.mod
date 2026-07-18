@@ -1,4 +1,4 @@
-module github.com/nexus-oss/nexus/nexus-installer
+module github.com/abhi-vmlinuz/nexus-framework/nexus-installer
 
 go 1.24.2
 

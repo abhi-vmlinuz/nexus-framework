@@ -1,4 +1,4 @@
-module github.com/nexus-oss/nexus/nexus-engine
+module github.com/abhi-vmlinuz/nexus-framework/nexus-engine
 
 go 1.22.0
 
@@ -8,6 +8,7 @@ require (
 	github.com/prometheus/client_golang v1.19.0
 	github.com/redis/go-redis/v9 v9.3.0
 	github.com/stretchr/testify v1.9.0
+	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -63,7 +64,6 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/term v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
-	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240513163218-0867130af1f8 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

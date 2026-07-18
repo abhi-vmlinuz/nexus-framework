@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/nexus-oss/nexus/nexus-cli/client"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-cli/client"
 )
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

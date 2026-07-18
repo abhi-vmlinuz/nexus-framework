@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/nexus-oss/nexus/nexus-installer/internal"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-installer/internal"
 	"strings"
 )
 

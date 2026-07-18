@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/nexus-oss/nexus/nexus-engine/internal/config"
-	pb "github.com/nexus-oss/nexus/nexus-engine/gen/contracts/nexus/nodeagent/v1"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
+	pb "github.com/abhi-vmlinuz/nexus-framework/nexus-engine/gen/contracts/nexus/nodeagent/v1"
 )
 
 const defaultCallTimeout = 10 * time.Second

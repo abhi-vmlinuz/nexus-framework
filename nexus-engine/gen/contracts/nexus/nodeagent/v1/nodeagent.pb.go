@@ -1057,7 +1057,7 @@ const file_contracts_nexus_nodeagent_v1_nodeagent_proto_rawDesc = "" +
 	"\x0fRevokePodAccess\x12*.nexus.nodeagent.v1.RevokePodAccessRequest\x1a+.nexus.nodeagent.v1.RevokePodAccessResponse\x12v\n" +
 	"\x13EnsureWireGuardPeer\x12..nexus.nodeagent.v1.EnsureWireGuardPeerRequest\x1a/.nexus.nodeagent.v1.EnsureWireGuardPeerResponse\x12v\n" +
 	"\x13RevokeWireGuardPeer\x12..nexus.nodeagent.v1.RevokeWireGuardPeerRequest\x1a/.nexus.nodeagent.v1.RevokeWireGuardPeerResponse\x12s\n" +
-	"\x12GetWireGuardStatus\x12-.nexus.nodeagent.v1.GetWireGuardStatusRequest\x1a..nexus.nodeagent.v1.GetWireGuardStatusResponseBFZDgithub.com/nexus-oss/nexus/nexus-engine/gen/nodeagent/v1;nodeagentv1b\x06proto3"
+	"\x12GetWireGuardStatus\x12-.nexus.nodeagent.v1.GetWireGuardStatusRequest\x1a..nexus.nodeagent.v1.GetWireGuardStatusResponseBFZDgithub.com/abhi-vmlinuz/nexus-framework/nexus-engine/gen/nodeagent/v1;nodeagentv1b\x06proto3"
 
 var (
 	file_contracts_nexus_nodeagent_v1_nodeagent_proto_rawDescOnce sync.Once

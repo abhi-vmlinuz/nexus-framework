@@ -129,7 +129,7 @@ When running Nexus on a cloud VM (AWS EC2, GCP, Azure, etc.) the following **inb
 Install Nexus Framework on any supported Linux distribution with a single command:
 
 ```bash
-curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash
 ```
 
 This automatically detects and installs the **latest stable release**.
@@ -138,13 +138,13 @@ This automatically detects and installs the **latest stable release**.
 
 ```bash
 # Stable (default) — auto-detects latest release
-curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash
 
 # Development builds — latest rolling dev snapshot
-curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --dev
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash -s -- --dev
 
 # Specific version
-curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
 ```
 
 | Flag | Description |
@@ -162,8 +162,8 @@ curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | b
 If you prefer to audit the code first or clone manually:
 
 ```bash
-git clone https://gitlab.com/abhi-vmlinuz/nexus-oss.git
-cd nexus-oss
+git clone https://gitlab.com/abhi-vmlinuz/nexus-framework.git
+cd nexus-framework
 chmod +x build-installer.sh
 ./build-installer.sh
 ```
@@ -478,7 +478,7 @@ The uninstaller removes:
 ## Project Structure
 
 ```
-nexus-oss/
+nexus-framework/
 ├── build-installer.sh          # Bootstrap: build, run, and cleanup the installer
 ├── deploy/
 │   ├── setup.sh                # Legacy bash installer (superseded by TUI)

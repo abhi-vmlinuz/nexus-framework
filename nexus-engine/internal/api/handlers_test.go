@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nexus-oss/nexus/nexus-engine/internal/api"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/api"
 )
 
 // newTestRouter builds a gin router wired to a mock Deps.

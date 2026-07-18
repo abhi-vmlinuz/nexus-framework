@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/nexus-oss/nexus/nexus-cli/client"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-cli/client"
 	"github.com/spf13/cobra"
 )
 

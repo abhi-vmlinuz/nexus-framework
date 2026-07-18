@@ -15,7 +15,7 @@
 ## 1. Clone & Build
 
 ```bash
-git clone https://github.com/nexus-oss/nexus.git
+git clone https://github.com/nexus-framework/nexus.git
 cd nexus
 
 # Build the Go engine
@@ -33,7 +33,7 @@ cd nexus-cli && go build -o nexus . && cd ..
 ## 2. Bootstrap (one command)
 
 ```bash
-curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash
 ```
 
 The installer will guide you through the setup interactively (mode, registry, VPN, etc.).
@@ -43,13 +43,13 @@ The installer will guide you through the setup interactively (mode, registry, VP
 > **Channels:**
 > ```bash
 > # Latest stable release (default)
-> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash
 >
 > # Development build
-> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --dev
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash -s -- --dev
 >
 > # Specific version
-> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
+> curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-framework/-/raw/main/bootstrap.sh | bash -s -- --tag v0.1.1-beta
 > ```
 
 ---

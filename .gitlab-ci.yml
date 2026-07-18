@@ -60,7 +60,7 @@ setup-env:
 build-go:
   stage: build
   image:
-    name: registry.gitlab.com/abhi-vmlinuz/nexus-oss/nexus-ci-builder:latest
+    name: registry.gitlab.com/abhi-vmlinuz/nexus-framework/nexus-ci-builder:latest
     entrypoint: [""]
   needs:
     - setup-env
@@ -76,13 +76,13 @@ build-go:
     - |
       # Build AMD64
       (cd nexus-engine && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o ../nexus-engine-linux-amd64 ./cmd)
-      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-amd64 .)
-      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-amd64 .)
+      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-framework/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-amd64 .)
+      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/nexus-framework/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-amd64 .)
 
       # Build ARM64
       (cd nexus-engine && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" -o ../nexus-engine-linux-arm64 ./cmd)
-      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-arm64 .)
-      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-oss/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-arm64 .)
+      (cd nexus-cli && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-framework/nexus/nexus-cli/cmd.Version=${VERSION}" -o ../nexus-cli-linux-arm64 .)
+      (cd nexus-installer && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/nexus-framework/nexus/nexus-installer/internal.Version=${VERSION}" -o ../nexus-installer-linux-arm64 .)
   artifacts:
     paths:
       - nexus-engine-linux-*
@@ -93,7 +93,7 @@ build-go:
 build-rust:
   stage: build
   image:
-    name: registry.gitlab.com/abhi-vmlinuz/nexus-oss/nexus-ci-builder:latest
+    name: registry.gitlab.com/abhi-vmlinuz/nexus-framework/nexus-ci-builder:latest
     entrypoint: [""]
   needs:
     - setup-env
@@ -144,7 +144,7 @@ upload-packages:
         curl --fail --retry 5 --retry-connrefused --retry-delay 5 \
              --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
              --upload-file "$file" \
-             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}/$file"
+             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-framework/${RELEASE_TAG}/$file"
       done
   artifacts:
     paths:
@@ -167,7 +167,7 @@ create-release:
       # Install curl (the release-cli image is a minimal Alpine build)
       apk add --no-cache curl
       
-      REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-oss/${RELEASE_TAG}"
+      REGISTRY_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/nexus-framework/${RELEASE_TAG}"
       
       # Check if release exists using the GitLab API
       echo "Checking if release exists for tag: ${RELEASE_TAG}..."

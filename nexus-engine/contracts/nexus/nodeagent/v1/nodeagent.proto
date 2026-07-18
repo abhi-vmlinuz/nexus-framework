@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package nexus.nodeagent.v1;
 
-option go_package = "github.com/nexus-oss/nexus/nexus-engine/gen/nodeagent/v1;nodeagentv1";
+option go_package = "github.com/abhi-vmlinuz/nexus-framework/nexus-engine/gen/nodeagent/v1;nodeagentv1";
 
 // NodeAgentService is the privileged execution plane for Nexus Framework.
 // All mutating RPCs are idempotent. Responses use typed error codes only —

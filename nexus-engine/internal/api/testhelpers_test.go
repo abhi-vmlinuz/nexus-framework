@@ -3,12 +3,12 @@ package api_test
 import (
 	"testing"
 
-	"github.com/nexus-oss/nexus/nexus-engine/internal/api"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/config"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/controller"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/k8s"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/registry"
-	"github.com/nexus-oss/nexus/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/api"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/controller"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 )
 
 // minimalDeps returns api.Deps backed by a real Redis (skipped if unavailable)
