@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Nexus OSS is a self-hosted, bare-metal CTF challenge orchestration platform. It deploys, isolates, and manages ephemeral hacking challenges on bare-metal Linux using K3s, nerdctl, WireGuard, and Redis. The platform has four components:
+Nexus Framework is a self-hosted, bare-metal CTF challenge orchestration platform. It deploys, isolates, and manages ephemeral hacking challenges on bare-metal Linux using K3s, nerdctl, WireGuard, and Redis. The platform has four components:
 
 - **nexus-engine** (Go/Gin) — Central REST API server on `:8081`. Manages challenge session lifecycle via K3s pods, stores state in Redis, communicates with node agent over gRPC.
 - **nexus-cli** (Go/Cobra+Bubbletea) — Operator CLI and live TUI dashboard.

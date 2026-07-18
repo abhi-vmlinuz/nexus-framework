@@ -4,7 +4,7 @@ package nexus.nodeagent.v1;
 
 option go_package = "github.com/nexus-oss/nexus/nexus-engine/gen/nodeagent/v1;nodeagentv1";
 
-// NodeAgentService is the privileged execution plane for Nexus OSS.
+// NodeAgentService is the privileged execution plane for Nexus Framework.
 // All mutating RPCs are idempotent. Responses use typed error codes only —
 // never raw shell output or command stderr.
 service NodeAgentService {

@@ -46,7 +46,7 @@ func (m Model) View() string {
 
 func (m Model) renderWelcome() string {
 	banner := StyleBrand.Render(bannerArt)
-	title := lipgloss.NewStyle().Bold(true).Foreground(ColorWhite).Render("Nexus OSS — Challenge Infrastructure")
+	title := lipgloss.NewStyle().Bold(true).Foreground(ColorWhite).Render("Nexus Framework — Challenge Infrastructure")
 	subtitle := StyleStep.Render("Self-hosted isolated pod deployment for CTFs")
 
 	welcome := lipgloss.JoinVertical(lipgloss.Center,
@@ -173,7 +173,7 @@ func (m Model) renderCompletePage() string {
 		redisTip = "\n\nOperational Tip:\n  To manage the Redis container, use:\n  sudo nerdctl --address /run/k3s/containerd/containerd.sock ps"
 	}
 	completionTip := "\n\nShell Completion:\n  System completions installed. To activate in current session:\n  source /usr/share/bash-completion/completions/nexus (or reload shell)"
-	body := fmt.Sprintf("\nNexus OSS is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json%s%s\n\nPress Enter to exit", m.EnginePort, m.AgentPort, redisTip, completionTip)
+	body := fmt.Sprintf("\nNexus Framework is ready to use.\n\nEndpoints:\n  Engine: http://localhost:%s\n  Agent:  grpc://localhost:%s\n\nConfiguration:\n  ~/.config/nexus/config.json%s%s\n\nPress Enter to exit", m.EnginePort, m.AgentPort, redisTip, completionTip)
 
 	return StyleBox.Render(lipgloss.JoinVertical(lipgloss.Center, title, body))
 }

@@ -30,8 +30,8 @@ func newRootCmd() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "nexus",
-		Short: "Nexus OSS — control plane operator CLI",
-		Long: `nexus is the operator CLI for the Nexus OSS infrastructure framework.
+		Short: "Nexus Framework — control plane operator CLI",
+		Long: `nexus is the operator CLI for the Nexus Framework infrastructure framework.
 
   Manage challenges, sessions, and inspect the reconciliation controller.
   Start the live TUI dashboard with: nexus tui

@@ -1,4 +1,4 @@
-# Nexus OSS Debugging Guide
+# Nexus Framework Debugging Guide
 
 This document covers common issues encountered during the setup and operation of the Nexus Engine, Node Agent, and CLI.
 

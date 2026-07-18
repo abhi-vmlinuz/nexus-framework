@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# bump-version.sh — Update version across all Nexus OSS components.
+# bump-version.sh — Update version across all Nexus Framework components.
 #
 # Usage:
 #   ./bump-version.sh 0.1.2        # set all components to 0.1.2

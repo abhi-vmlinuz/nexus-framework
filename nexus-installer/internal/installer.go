@@ -560,7 +560,7 @@ func SetupServices(mode, port, redisURL, regURL, agentAddr, namespace string) (s
 	}
 
 	agentSvc := fmt.Sprintf(`[Unit]
-Description=Nexus OSS Node Agent
+Description=Nexus Framework Node Agent
 After=network.target
 
 [Service]
@@ -580,7 +580,7 @@ CapabilityBoundingSet=CAP_NET_ADMIN
 WantedBy=multi-user.target`, mode, insecure)
 
 	engineSvc := fmt.Sprintf(`[Unit]
-Description=Nexus OSS Engine
+Description=Nexus Framework Engine
 Wants=k3s.service
 After=network.target redis.service nexus-node-agent.service k3s.service
 

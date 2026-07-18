@@ -33,7 +33,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// NodeAgentService is the privileged execution plane for Nexus OSS.
+// NodeAgentService is the privileged execution plane for Nexus Framework.
 // All mutating RPCs are idempotent. Responses use typed error codes only —
 // never raw shell output or command stderr.
 type NodeAgentServiceClient interface {
@@ -154,7 +154,7 @@ func (c *nodeAgentServiceClient) GetWireGuardStatus(ctx context.Context, in *Get
 // All implementations should embed UnimplementedNodeAgentServiceServer
 // for forward compatibility.
 //
-// NodeAgentService is the privileged execution plane for Nexus OSS.
+// NodeAgentService is the privileged execution plane for Nexus Framework.
 // All mutating RPCs are idempotent. Responses use typed error codes only —
 // never raw shell output or command stderr.
 type NodeAgentServiceServer interface {

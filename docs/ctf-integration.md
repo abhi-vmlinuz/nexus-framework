@@ -1,10 +1,10 @@
-# Nexus OSS — CTF Platform Integration Guide
+# Nexus Framework — CTF Platform Integration Guide
 
-This guide is for developers building CTF (Capture The Flag) platforms who want to use Nexus OSS as their challenge infrastructure backend.
+This guide is for developers building CTF (Capture The Flag) platforms who want to use Nexus Framework as their challenge infrastructure backend.
 
 ## Overview
 
-Nexus OSS handles the **infrastructure layer**: deploying isolated challenge containers, managing VPN access, and cleaning up sessions. Your CTF platform handles **user management, scoring, authentication, and UI**.
+Nexus Framework handles the **infrastructure layer**: deploying isolated challenge containers, managing VPN access, and cleaning up sessions. Your CTF platform handles **user management, scoring, authentication, and UI**.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

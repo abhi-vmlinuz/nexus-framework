@@ -2,7 +2,7 @@
 name = "nexus-node-agent"
 version = "0.1.2"
 edition = "2021"
-description = "Nexus OSS privileged execution daemon — ipset, iptables, WireGuard"
+description = "Nexus Framework privileged execution daemon — ipset, iptables, WireGuard"
 license = "Apache-2.0"
 
 [dependencies]

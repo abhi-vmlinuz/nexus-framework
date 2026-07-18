@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Nexus OSS, please report it responsibly.
+If you discover a security vulnerability in Nexus Framework, please report it responsibly.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 

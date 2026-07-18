@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# deploy/setup.sh — Nexus OSS Bootstrap Script
+# deploy/setup.sh — Nexus Framework Bootstrap Script
 #
-# Installs and configures the full Nexus OSS stack on a Linux host.
+# Installs and configures the full Nexus Framework stack on a Linux host.
 # Supports: Ubuntu, Debian, Fedora, RHEL/CentOS (8+), Arch Linux, openSUSE
 #
 # Usage (interactive):
@@ -25,7 +25,7 @@ echo -e "\033[1;36m
 ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
 \033[0m"
 
-echo -e "\033[0;37m  Bootstrapping Nexus OSS...\033[0m"
+echo -e "\033[0;37m  Bootstrapping Nexus Framework...\033[0m"
 echo -e "\033[0;90m  Initializing infrastructure and runtime components\033[0m\n"
 }
 
@@ -165,7 +165,7 @@ prompt() {
 }
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
-banner "Nexus OSS Bootstrap"
+banner "Nexus Framework Bootstrap"
 
 prompt NEXUS_MODE            "Mode (dev/prod)"         "dev"
 prompt NEXUS_PORT            "Engine HTTP port"         "8081"
@@ -593,7 +593,7 @@ banner "Phase 8: Systemd Services"
 
 cat > /etc/systemd/system/nexus-node-agent.service <<EOF
 [Unit]
-Description=Nexus OSS Node Agent
+Description=Nexus Framework Node Agent
 After=network.target
 
 [Service]
@@ -616,7 +616,7 @@ EOF
 
 cat > /etc/systemd/system/nexus-engine.service <<EOF
 [Unit]
-Description=Nexus OSS Engine
+Description=Nexus Framework Engine
 After=network.target ${REDIS_SVC}.service nexus-node-agent.service
 Requires=${REDIS_SVC}.service
 
@@ -764,7 +764,7 @@ fi
 
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════╗${NC}"
-echo -e "${GREEN}${BOLD}║  Nexus OSS installed successfully!   ║${NC}"
+echo -e "${GREEN}${BOLD}║  Nexus Framework installed successfully!   ║${NC}"
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════╝${NC}"
 echo ""
 echo "  Engine:   http://localhost:${NEXUS_PORT}"

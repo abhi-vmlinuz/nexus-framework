@@ -181,7 +181,7 @@ create-release:
       fi
       
       echo "Creating GitLab Release for tag: ${RELEASE_TAG}"
-      release-cli create --name "Nexus OSS ${RELEASE_TAG}" \
+      release-cli create --name "Nexus Framework ${RELEASE_TAG}" \
         --description "Automated build of version ${VERSION}" \
         --tag-name "${RELEASE_TAG}" \
         --assets-link "{\"name\":\"nexus-engine-linux-amd64\",\"url\":\"${REGISTRY_URL}/nexus-engine-linux-amd64\"}" \

@@ -1,8 +1,8 @@
-# Nexus OSS — Architecture
+# Nexus Framework — Architecture
 
 ## Overview
 
-Nexus OSS is a **generic infrastructure layer** for orchestrating isolated, ephemeral challenge environments. It is decoupled from any specific CTF platform, scoring system, or billing logic.
+Nexus Framework is a **generic infrastructure layer** for orchestrating isolated, ephemeral challenge environments. It is decoupled from any specific CTF platform, scoring system, or billing logic.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -49,7 +49,7 @@ Nexus OSS is a **generic infrastructure layer** for orchestrating isolated, ephe
 
 ## Architectural Boundary: Challenge Building & Registry (Separation of Concerns)
 
-A critical design choice in Nexus OSS is the **strict separation of concerns** between the consuming CTF platform (or developer tools) and the Nexus Engine regarding how challenge files are managed, built, and stored.
+A critical design choice in Nexus Framework is the **strict separation of concerns** between the consuming CTF platform (or developer tools) and the Nexus Engine regarding how challenge files are managed, built, and stored.
 
 ```mermaid
 graph TD

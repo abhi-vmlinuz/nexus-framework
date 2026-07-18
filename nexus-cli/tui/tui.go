@@ -1,4 +1,4 @@
-// Package tui implements the Nexus OSS Bubbletea TUI dashboard.
+// Package tui implements the Nexus Framework Bubbletea TUI dashboard.
 // Architecture: single model, polling goroutine sends tea.Msg, draw is pure.
 package tui
 

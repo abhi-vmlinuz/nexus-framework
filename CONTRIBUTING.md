@@ -1,4 +1,4 @@
-# Contributing to Nexus OSS
+# Contributing to Nexus Framework
 
 Thanks for your interest in contributing. This guide covers everything you need to get started.
 

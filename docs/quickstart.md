@@ -1,4 +1,4 @@
-# Quickstart — Nexus OSS in 10 Minutes
+# Quickstart — Nexus Framework in 10 Minutes
 
 > **Goal:** Start nexus-engine + nexus-node-agent, register a challenge, spawn a session, verify with the TUI.
 

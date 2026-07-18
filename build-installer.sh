@@ -7,7 +7,7 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}Nexus OSS Installer Bootstrap${NC}"
+echo -e "${BLUE}Nexus Framework Installer Bootstrap${NC}"
 
 # 0. Request Sudo up front
 echo -e "${BLUE}The installer requires root privileges for system configuration.${NC}"
@@ -40,7 +40,7 @@ echo -e "${GREEN}Launching Nexus Installer...${NC}"
 if /usr/local/bin/nexus-installer; then
     echo -e "${BLUE}Installation complete. Cleaning up installer binary...${NC}"
     sudo rm -f /usr/local/bin/nexus-installer
-    echo -e "${GREEN}Cleanup finished. Nexus OSS is ready!${NC}"
+    echo -e "${GREEN}Cleanup finished. Nexus Framework is ready!${NC}"
 else
     echo -e "${RED}Installer exited with error.${NC}"
     echo -e "Keeping binary for debugging at: /usr/local/bin/nexus-installer"

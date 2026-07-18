@@ -2,7 +2,7 @@
 set -e
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Nexus OSS Bootstrap Installer
+# Nexus Framework Bootstrap Installer
 #
 # Usage:
 #   curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | sudo bash
@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         --help|-h)
-            echo "Nexus OSS Installer"
+            echo "Nexus Framework Installer"
             echo ""
             echo "Usage: bootstrap.sh [OPTIONS]"
             echo ""
@@ -70,7 +70,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-echo -e "${BLUE}Nexus OSS - One-Click Bootstrapper${NC}"
+echo -e "${BLUE}Nexus Framework - One-Click Bootstrapper${NC}"
 
 # ── Request sudo ─────────────────────────────────────────────────────────────
 echo -e "${BLUE}The installer requires root privileges for system configuration.${NC}"

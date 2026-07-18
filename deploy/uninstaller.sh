@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy/uninstaller.sh — Nexus OSS Uninstaller
+# deploy/uninstaller.sh — Nexus Framework Uninstaller
 #
 # Cleans up Nexus binaries, services, and configurations.
 # Leaves k3s intact.
@@ -17,7 +17,7 @@ ok()   { echo -e "${GREEN}[OK] $*${NC}"; }
 
 echo -e "${RED}${BOLD}"
 echo "╔══════════════════════════════════════╗"
-echo "║      Nexus OSS Uninstaller           ║"
+echo "║      Nexus Framework Uninstaller           ║"
 echo "╚══════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -96,6 +96,6 @@ info "Removing nexus group..."
 groupdel nexus &>/dev/null || true
 
 echo ""
-ok "Nexus OSS has been uninstalled."
+ok "Nexus Framework has been uninstalled."
 warn "Note: k3s and system packages (curl, wireguard-tools, etc.) were left intact."
 echo ""
