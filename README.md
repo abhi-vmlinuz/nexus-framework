@@ -26,7 +26,7 @@
 
 ## Overview
 
-Nexus OSS is a control plane for running containerized CTF (Capture The Flag) challenges on bare-metal or self-hosted virtual machines. It replaces expensive cloud-based orchestration with a lightweight K3s + nerdctl stack, providing:
+Nexus Framework is a control plane for running containerized CTF (Capture The Flag) challenges on bare-metal or self-hosted virtual machines. It replaces expensive cloud-based orchestration with a lightweight K3s + nerdctl stack, providing:
 
 - **Multi-tenant isolation** via WireGuard VPN and `ipset`/`iptables` network policies
 - **Ephemeral challenge instances** — each player session gets its own isolated container
@@ -126,7 +126,7 @@ When running Nexus on a cloud VM (AWS EC2, GCP, Azure, etc.) the following **inb
 
 ### One-Command Bootstrap (Recommended)
 
-Install Nexus OSS on any supported Linux distribution with a single command:
+Install Nexus Framework on any supported Linux distribution with a single command:
 
 ```bash
 curl -fsSL https://gitlab.com/abhi-vmlinuz/nexus-oss/-/raw/main/bootstrap.sh | bash
@@ -362,7 +362,7 @@ If no key is configured, all endpoints are open (auth disabled).
 
 ## CLI Reference
 
-Nexus OSS provides an operator CLI client (`nexus`) to monitor the engine, register challenges, control player sessions, and launch a live TUI terminal dashboard.
+Nexus Framework provides an operator CLI client (`nexus`) to monitor the engine, register challenges, control player sessions, and launch a live TUI terminal dashboard.
 
 For a comprehensive guide detailing all command parameters, options, and TUI shortcuts, please refer to the **[CLI Reference Manual](docs/cli.md)**.
 
@@ -429,7 +429,7 @@ To make it permanent, add the appropriate command to your shell's configuration 
 
 ## API Reference
 
-Nexus OSS provides a complete REST API for session lifecycle management and challenge orchestration. This allows for easy integration with existing CTF platforms like CTFd.
+Nexus Framework provides a complete REST API for session lifecycle management and challenge orchestration. This allows for easy integration with existing CTF platforms like CTFd.
 
 For a full list of endpoints, request models, and response structures, see the [API Documentation](docs/api.md).
 
