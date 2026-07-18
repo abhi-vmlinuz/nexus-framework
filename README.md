@@ -1,4 +1,4 @@
-# Nexus OSS
+# Nexus Framework
 
 > **A self-hosted, bare-metal CTF challenge orchestration platform.**  
 > Deploy, isolate, and manage ephemeral hacking challenges on your own infrastructure — no cloud required.
