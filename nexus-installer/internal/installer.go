@@ -497,10 +497,6 @@ func WriteConfigFile(home string, conf Config) (string, error) {
 
 	// Also write the system-wide environment configuration for the systemd services
 	etcDir := "/etc/nexus"
-	if err := os.MkdirAll(etcDir, 0755); err != nil {
-		return "", err
-	}
-
 	insecure := "true"
 	if conf.Mode == "prod" {
 		insecure = "false"
@@ -519,7 +515,17 @@ NEXUS_NODE_AGENT_INSECURE=%s
 NEXUS_API_KEY=%s
 `, conf.Mode, conf.EnginePort, conf.RedisURL, conf.K8sNamespace, conf.RegistryURL, conf.RegistryType, conf.RegistryUser, conf.RegistryPass, conf.NodeAgentAddr, insecure, apiKey)
 
-	if err := os.WriteFile(filepath.Join(etcDir, "engine.env"), []byte(envContent), 0600); err != nil {
+	tmpEnv := "/tmp/nexus-engine.env"
+	if err := os.WriteFile(tmpEnv, []byte(envContent), 0600); err != nil {
+		return "", err
+	}
+	if _, err := RunCommand("sudo mkdir -p " + etcDir); err != nil {
+		return "", err
+	}
+	if _, err := RunCommand(fmt.Sprintf("sudo mv %s %s/engine.env", tmpEnv, etcDir)); err != nil {
+		return "", err
+	}
+	if _, err := RunCommand(fmt.Sprintf("sudo chmod 600 %s/engine.env", etcDir)); err != nil {
 		return "", err
 	}
 
