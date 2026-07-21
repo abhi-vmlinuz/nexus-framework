@@ -201,7 +201,7 @@ chmod +x "${INSTALLER_BIN}"
 
 # ── Launch installer ─────────────────────────────────────────────────────────
 echo -e "${GREEN}Launching Nexus Installer TUI...${NC}"
-if "${INSTALLER_BIN}"; then
+if NEXUS_INSTALLER_VERSION="${RELEASE_TAG}" "${INSTALLER_BIN}"; then
     echo -e "${GREEN}Bootstrap finished successfully.${NC}"
 else
     echo -e "${RED}Installer exited with error.${NC}"

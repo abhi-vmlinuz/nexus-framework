@@ -314,14 +314,17 @@ PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING 
 	return RunCommand(cmd)
 }
 
-var Version = "v0.1.2"
+var Version = "v0.1.2-beta"
 
 // BuildAndInstallBinaries handles Phase 7.
 func BuildAndInstallBinaries(repoRoot string) (string, error) {
 	out := ""
 	arch := DetectArch()
-	releaseTag := Version
-	if strings.HasSuffix(Version, "-dev") {
+	releaseTag := os.Getenv("NEXUS_INSTALLER_VERSION")
+	if releaseTag == "" {
+		releaseTag = Version
+	}
+	if strings.HasSuffix(releaseTag, "-dev") {
 		releaseTag = "latest-dev"
 	}
 	baseURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/abhi-vmlinuz%%2Fnexus-framework/packages/generic/nexus-framework/%s", releaseTag)
