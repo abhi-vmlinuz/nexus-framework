@@ -37,3 +37,7 @@ convo.txt
 plans.md
 2026-*-command-message*.txt
 vpn-config-analysis.md
+history.pdf
+
+# Analysis reports (local only, not pushed to remote)
+analysis/

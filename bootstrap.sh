@@ -164,9 +164,15 @@ INSTALLER_BIN="${TEMP_DIR}/nexus-installer"
 
 echo -e "${BLUE}Downloading prebuilt installer for Linux ${ARCH} (Tag: ${RELEASE_TAG})...${NC}"
 if ! curl --fail --retry 3 -sSL "${REGISTRY_URL}/nexus-installer-linux-${ARCH}" -o "${INSTALLER_BIN}"; then
-    echo -e "${RED}Error: Failed to download installer for tag '${RELEASE_TAG}'.${NC}"
-    echo -e "${RED}Check available releases at: https://gitlab.com/abhi-vmlinuz/nexus-framework/-/releases${NC}"
-    exit 1
+    # Fallback to legacy package name "nexus-oss"
+    REGISTRY_URL_FALLBACK="${GITLAB_API}/packages/generic/nexus-oss/${RELEASE_TAG}"
+    echo -e "${YELLOW}Retrying with legacy registry URL (nexus-oss)...${NC}"
+    if ! curl --fail --retry 3 -sSL "${REGISTRY_URL_FALLBACK}/nexus-installer-linux-${ARCH}" -o "${INSTALLER_BIN}"; then
+        echo -e "${RED}Error: Failed to download installer for tag '${RELEASE_TAG}'.${NC}"
+        echo -e "${RED}Check available releases at: https://gitlab.com/abhi-vmlinuz/nexus-framework/-/releases${NC}"
+        exit 1
+    fi
+    REGISTRY_URL="${REGISTRY_URL_FALLBACK}"
 fi
 
 # ── Verify checksum ──────────────────────────────────────────────────────────
