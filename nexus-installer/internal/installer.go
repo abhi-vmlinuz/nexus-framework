@@ -550,16 +550,20 @@ func SetupMTLSCertificates(mode string) (string, error) {
 	certDir := "/etc/nexus"
 	RunCommand("sudo mkdir -p " + certDir)
 
-	// Generate CA
-	RunCommand(fmt.Sprintf("sudo openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -keyout %s/ca.key -out %s/ca.crt -subj '/CN=Nexus Root CA'", certDir, certDir))
+	// Generate CA (v3 CA certificate)
+	RunCommand(fmt.Sprintf("sudo openssl req -x509 -newkey rsa:4096 -days 3650 -nodes -keyout %s/ca.key -out %s/ca.crt -subj '/CN=Nexus Root CA' -addext 'basicConstraints=critical,CA:TRUE'", certDir, certDir))
 
-	// Generate Server Cert (Node Agent)
-	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-server.key -out %s/agent-server.csr -subj '/CN=localhost'", certDir, certDir))
-	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-server.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-server.crt -days 365", certDir, certDir, certDir, certDir))
+	// Generate Server Cert (Node Agent) - v3 server certificate
+	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-server.key -out %s/agent-server.csr -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost'", certDir, certDir))
+	RunCommand("echo 'subjectAltName=DNS:localhost' > /tmp/agent-server-ext.txt")
+	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-server.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-server.crt -days 365 -extfile /tmp/agent-server-ext.txt", certDir, certDir, certDir, certDir))
+	RunCommand("rm -f /tmp/agent-server-ext.txt")
 
-	// Generate Client Cert (Engine)
-	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-client.key -out %s/agent-client.csr -subj '/CN=nexus-engine'", certDir, certDir))
-	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-client.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-client.crt -days 365", certDir, certDir, certDir, certDir))
+	// Generate Client Cert (Engine) - v3 client certificate
+	RunCommand(fmt.Sprintf("sudo openssl req -newkey rsa:4096 -nodes -keyout %s/agent-client.key -out %s/agent-client.csr -subj '/CN=nexus-engine' -addext 'subjectAltName=DNS:nexus-engine'", certDir, certDir))
+	RunCommand("echo 'subjectAltName=DNS:nexus-engine' > /tmp/agent-client-ext.txt")
+	RunCommand(fmt.Sprintf("sudo openssl x509 -req -in %s/agent-client.csr -CA %s/ca.crt -CAkey %s/ca.key -CAcreateserial -out %s/agent-client.crt -days 365 -extfile /tmp/agent-client-ext.txt", certDir, certDir, certDir, certDir))
+	RunCommand("rm -f /tmp/agent-client-ext.txt")
 
 	// Permissions
 	RunCommand(fmt.Sprintf("sudo chmod 600 %s/*.key %s/*.crt", certDir, certDir))
