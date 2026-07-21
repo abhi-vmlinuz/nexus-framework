@@ -38,6 +38,13 @@ func newRootCmd() *cobra.Command {
 
   Engine URL can be set via --engine flag or NEXUS_ENGINE_URL env var.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Skip config loading for completion and help commands
+			for c := cmd; c != nil; c = c.Parent() {
+				if c.Name() == "completion" || c.Name() == "help" {
+					return nil
+				}
+			}
+
 			loaded, err := config.LoadConfigWithEnvFallback()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
