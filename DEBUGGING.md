@@ -131,3 +131,27 @@ sudo cp target/release/nexus-node-agent /usr/local/bin/nexus-node-agent
 sudo systemctl start nexus-node-agent
 ```
 
+---
+
+## 10. Installer Fails with CNI Path / bridge Plugin Missing
+
+**Symptoms:**
+- The bootstrap installer fails during local registry setup or networking validation with the error:
+  `fatal msg="failed to verify networking settings: failed to create default network: needs CNI plugin \"bridge\" to be installed in CNI_PATH (\"/opt/cni/bin\")"`
+
+**Cause:**
+`nerdctl` requires Container Network Interface (CNI) plugins (specifically `bridge`) to set up default networks. On a clean host VM where K3s or Kubernetes has not been set up yet, the `/opt/cni/bin` directory and its plugins do not exist.
+
+**Fix:**
+1. Install the standard CNI plugins package for your distribution:
+   ```bash
+   sudo apt-get update && sudo apt-get install -y containernetworking-plugins
+   ```
+2. Create the target `/opt/cni/bin/` folder and symlink the installed CNI plugins (which Ubuntu/Debian installs in `/usr/lib/cni/`):
+   ```bash
+   sudo mkdir -p /opt/cni/bin
+   sudo ln -s /usr/lib/cni/* /opt/cni/bin/
+   ```
+3. Re-run the bootstrap installer script.
+
+
