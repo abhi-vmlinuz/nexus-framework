@@ -344,8 +344,14 @@ func BuildAndInstallBinaries(repoRoot string) (string, error) {
 	checksumsURL := baseURL + "/checksums.txt"
 	checksumsPath := filepath.Join(tmpDir, "checksums.txt")
 	if err := DownloadFile(checksumsURL, checksumsPath); err != nil {
-		out += fmt.Sprintf("Download failed (checksums): %v. Falling back to local build.\n", err)
-		downloaded = false
+		// Try legacy fallback with "nexus-oss" package name
+		out += fmt.Sprintf("Download failed under 'nexus-framework' package: %v. Retrying with legacy 'nexus-oss' package...\n", err)
+		baseURL = fmt.Sprintf("https://gitlab.com/api/v4/projects/abhi-vmlinuz%%2Fnexus-framework/packages/generic/nexus-oss/%s", releaseTag)
+		checksumsURL = baseURL + "/checksums.txt"
+		if errFallback := DownloadFile(checksumsURL, checksumsPath); errFallback != nil {
+			out += fmt.Sprintf("Download failed (checksums fallback): %v. Falling back to local build.\n", errFallback)
+			downloaded = false
+		}
 	}
 
 	if downloaded {
