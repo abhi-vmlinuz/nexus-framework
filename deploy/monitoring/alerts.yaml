@@ -1,0 +1,62 @@
+groups:
+  - name: nexus_alerts
+    rules:
+      - alert: NexusVPNPoolHigh
+        expr: (nexus_vpn_ips_used / 1022) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          component: vpn
+        annotations:
+          summary: "Nexus VPN pool usage > 80%"
+          description: "VPN pool is {{ $value | printf \"%.1f\" }}% full (capacity: 1022 IPs in 10.8.0.0/22). Investigate active sessions or prepare subnet expansion."
+
+      - alert: NexusVPNPoolExhausted
+        expr: (nexus_vpn_ips_used / 1022) * 100 >= 95
+        for: 1m
+        labels:
+          severity: critical
+          component: vpn
+        annotations:
+          summary: "Nexus VPN pool nearly exhausted"
+          description: "VPN pool is {{ $value | printf \"%.1f\" }}% full. New session creation will fail with 500 when capacity is reached."
+
+      - alert: NexusHigh5xxErrorRate
+        expr: (sum(rate(nexus_session_create_total{status!="success"}[5m])) / clamp_min(sum(rate(nexus_session_create_total[5m])), 1)) * 100 > 10
+        for: 2m
+        labels:
+          severity: critical
+          component: engine
+        annotations:
+          summary: "Nexus session creation error rate > 10%"
+          description: "Over 10% of session creation requests have failed in the past 5 minutes."
+
+      - alert: NexusNodeAgentRPCErrors
+        expr: rate(nexus_nodeagent_rpc_errors_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          component: node-agent
+        annotations:
+          summary: "Nexus Node Agent RPC errors detected"
+          description: "Engine reconciler failed to communicate with node agent on localhost:50051."
+
+      - alert: NexusReconcileRepairsSpike
+        expr: rate(nexus_reconcile_repairs_total[5m]) > 1
+        for: 3m
+        labels:
+          severity: warning
+          component: reconciler
+        annotations:
+          summary: "Elevated reconciler repair activity"
+          description: "Reconciler is repairing state at {{ $value | printf \"%.2f\" }} repairs/sec (orphaned pods, dropped isolation, or failed nodes)."
+
+      - alert: NexusSessionLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(nexus_session_create_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 3m
+        labels:
+          severity: warning
+          component: k3s
+        annotations:
+          summary: "p95 session creation latency > 30s"
+          description: "Session pod provisioning is taking {{ $value | printf \"%.1f\" }}s. Possible pod scheduling bottlenecks in K3s."
