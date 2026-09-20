@@ -576,6 +576,37 @@ All installer output is permanently recorded at:
 
 ---
 
+## 📊 Observability, Competition Telemetry & Runbooks
+
+Nexus Framework includes built-in telemetry, Prometheus metrics, and automated reporting designed for collegiate competitions (300–400 participants):
+
+### 1. Live Metrics & Alerts
+* **Prometheus Metrics**: Exposed on `/metrics` (session creation latency histograms, active session gauges, VPN pool utilization).
+* **Alert Rules**: [`deploy/monitoring/alerts.yaml`](deploy/monitoring/alerts.yaml) triggers warnings when VPN pool usage exceeds 80% or session spawn failure rates spike.
+* **Grafana Dashboard**: Import [`deploy/monitoring/grafana-dashboard.json`](deploy/monitoring/grafana-dashboard.json) for live competition monitoring (active sessions, p95 latencies, self-healing repairs).
+
+### 2. On-Disk Event Telemetry & Reporting
+Every session lifecycle transition is appended to `/var/lib/nexus/events.jsonl` (mode `0600`).
+
+Generate post-event executive summaries for university faculty and sponsors:
+```bash
+python3 scripts/event-report.py \
+  --input /var/lib/nexus/events.jsonl \
+  --pdf competition-report.pdf \
+  --csv competition-report.csv \
+  --title "Collegiate CTF 2026 Report"
+```
+Or export directly from the engine admin API:
+```bash
+curl -s -H "Authorization: Bearer <API_KEY>" \
+  "http://localhost:8081/api/v1/admin/telemetry/export?format=csv" -o export.csv
+```
+
+### 3. Competition Operations & Runbook
+See [`docs/runbook.md`](docs/runbook.md) for pre-flight checklists, Redis backup/restore drills, WireGuard emergency maintenance, and rollback workflows.
+
+---
+
 ## 🛠️ Troubleshooting
 
 Facing issues with service permissions, SELinux, or loopback connectivity? 

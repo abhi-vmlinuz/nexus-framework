@@ -9,9 +9,11 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
 )
 
 // vpnHandler serves WireGuard config endpoints.
@@ -34,7 +36,7 @@ func newVPNHandler(d Deps) *vpnHandler { return &vpnHandler{d: d} }
 // Flow:
 //  1. Check Redis for existing VPN config → return cached .conf if found.
 //  2. Generate new keypair (wg genkey | wg pubkey).
-//  3. Assign next available VPN IP in 10.8.0.2-254.
+//  3. Assign next available VPN IP in 10.8.0.0/22.
 //  4. Register peer with node agent (EnsureWireGuardPeer).
 //  5. Store config in Redis (no expiry — persists until regenerated).
 //  6. Return .conf file download.
@@ -48,9 +50,12 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	// Check for existing config first.
 	existing, err := h.d.Store.GetVPNConfig(userID)
 	if err == nil && existing != nil {
+		metricVPNClaimTotal.WithLabelValues("cached").Inc()
 		h.returnConfFile(c, existing)
 		return
 	}
+
+	claimStart := time.Now()
 
 	// Generate new keypair.
 	privKey, pubKey, err := generateWireGuardKeypair()
@@ -64,6 +69,11 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	vpnIP, err := h.d.Store.ClaimNextAvailableVPNIP()
 	if err != nil {
 		log.Printf("[VPN] IP assignment failed for user %s: %v", userID, err)
+		metricVPNClaimTotal.WithLabelValues("exhausted").Inc()
+		metricVPNClaimDuration.WithLabelValues("exhausted").Observe(time.Since(claimStart).Seconds())
+		if h.d.Telemetry != nil {
+			h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.VPNExhausted), UserID: userID, Status: "exhausted", Detail: err.Error()})
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "VPN IP pool exhausted"})
 		return
 	}
@@ -92,6 +102,12 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	}
 
 	log.Printf("[VPN] provisioned peer for user %s ip=%s", userID, vpnIP)
+	metricVPNClaimTotal.WithLabelValues("claimed").Inc()
+	metricVPNClaimDuration.WithLabelValues("claimed").Observe(time.Since(claimStart).Seconds())
+	metricVPNIPsUsed.Inc()
+	if h.d.Telemetry != nil {
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.VPNClaimed), UserID: userID, DurationMs: time.Since(claimStart).Milliseconds(), Status: "claimed", Detail: vpnIP})
+	}
 	h.returnConfFile(c, cfg)
 }
 
@@ -180,7 +196,7 @@ Address = %s/32
 [Peer]
 PublicKey = %s
 Endpoint = %s
-AllowedIPs = 10.8.0.0/24, 10.42.0.0/16
+AllowedIPs = 10.8.0.0/22, 10.42.0.0/16
 PersistentKeepalive = 25
 `, cfg.PrivateKey, cfg.VPNip, serverPubKey, endpoint)
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -366,6 +367,38 @@ func (c *Client) RawMetrics() (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+// ExportTelemetry fetches /api/v1/admin/telemetry/export and writes raw bytes to outPath.
+func (c *Client) ExportTelemetry(format, from, to, typ, outPath string) error {
+	url := c.baseURL + "/api/v1/admin/telemetry/export?format=" + format
+	if from != "" {
+		url += "&from=" + from
+	}
+	if to != "" {
+		url += "&to=" + to
+	}
+	if typ != "" {
+		url += "&type=" + typ
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("export failed %s: %s", resp.Status, string(body))
+	}
+	return os.WriteFile(outPath, body, 0o644)
 }
 
 type UpdateRegistryRequest struct {

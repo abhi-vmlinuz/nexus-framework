@@ -508,11 +508,13 @@ if [[ "${NEXUS_REDIS_BACKEND:-docker}" == "docker" ]]; then
     ok "Redis container '$REDIS_CONTAINER' already running"
   else
     info "Starting Redis Docker container..."
+    mkdir -p /var/lib/nexus/redis
     nerdctl run -d \
       --name "$REDIS_CONTAINER" \
       --restart always \
       -p 6379:6379 \
-      redis:7-alpine
+      -v /var/lib/nexus/redis:/data \
+      redis:7-alpine redis-server --appendonly yes --save "60 1000"
     ok "Redis container started on port 6379"
   fi
 else
@@ -532,7 +534,7 @@ if [[ ! -f /etc/wireguard/wg0.conf ]]; then
   mkdir -p /etc/wireguard && chmod 700 /etc/wireguard
   cat > /etc/wireguard/wg0.conf <<WGCONF
 [Interface]
-Address = 10.8.0.1/24
+Address = 10.8.0.1/22
 ListenPort = 51820
 PrivateKey = $WG_KEY
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
@@ -591,6 +593,12 @@ install_node_agent
 # ─── Phase 8: Systemd units ───────────────────────────────────────────────────
 banner "Phase 8: Systemd Services"
 
+# Prod must not run insecure gRPC. Dev keeps insecure for convenience.
+NEXUS_INSECURE="true"
+if [[ "${NEXUS_MODE}" == "prod" ]]; then
+  NEXUS_INSECURE="false"
+fi
+
 cat > /etc/systemd/system/nexus-node-agent.service <<EOF
 [Unit]
 Description=Nexus Framework Node Agent
@@ -602,8 +610,8 @@ ExecStart=/usr/local/bin/nexus-node-agent
 Restart=on-failure
 RestartSec=5
 Environment=NEXUS_MODE=${NEXUS_MODE}
-Environment=NODE_AGENT_LISTEN_ADDR=0.0.0.0:50051
-Environment=NODE_AGENT_INSECURE=true
+Environment=NODE_AGENT_LISTEN_ADDR=127.0.0.1:50051
+Environment=NODE_AGENT_INSECURE=${NEXUS_INSECURE}
 Environment=RUST_LOG=nexus_node_agent=info,info
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
@@ -631,7 +639,7 @@ Environment=NEXUS_REDIS_URL=${NEXUS_REDIS_URL}
 Environment=NEXUS_REGISTRY_URL=${NEXUS_REGISTRY_URL}
 Environment=NEXUS_NODE_AGENT_ADDR=${NEXUS_NODE_AGENT_ADDR}
 Environment=NEXUS_K3S_NAMESPACE=${NEXUS_K3S_NAMESPACE}
-Environment=NEXUS_NODE_AGENT_INSECURE=true
+Environment=NEXUS_NODE_AGENT_INSECURE=${NEXUS_INSECURE}
 Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 StandardOutput=journal
 SyslogIdentifier=nexus-engine
@@ -674,7 +682,7 @@ spec:
   ingress:
     - from:
         - ipBlock:
-            cidr: 10.8.0.0/24
+            cidr: 10.8.0.0/22
   egress:
     - {}
   policyTypes:

@@ -80,6 +80,7 @@ func newRootCmd() *cobra.Command {
 		newChallengeCmd(makeClient()),
 		newSessionCmd(makeClient()),
 		newAdminCmd(makeClient),
+		newTelemetryCmd(makeClient),
 		newConfigCmd(makeClient),
 		newVersionCmd(),
 	)

@@ -275,11 +275,51 @@ fn validate_public_key(key: &str) -> Result<String, Status> {
 // ─── System metrics (best-effort) ─────────────────────────────────────────────
 
 fn system_metrics() -> (f64, f64, f64) {
-    // Read /proc/stat for CPU, /proc/meminfo for memory, /proc/mounts for disk.
+    // Read /proc/stat for CPU, /proc/meminfo for memory, statvfs for disk.
     // Returns (cpu_percent, mem_percent, disk_percent) — all 0.0 if unavailable.
     let cpu = read_cpu_percent().unwrap_or(0.0);
     let mem = read_mem_percent().unwrap_or(0.0);
-    (cpu, mem, 0.0) // disk omitted for now
+    let disk = read_disk_percent().unwrap_or(0.0);
+    (cpu, mem, disk)
+}
+
+fn read_disk_percent() -> Option<f64> {
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+
+    // Prefer /var/lib/nexus (Nexus data dir), then /var (K3s/container storage), then /
+    let path = if std::path::Path::new("/var/lib/nexus").exists() {
+        "/var/lib/nexus"
+    } else if std::path::Path::new("/var").exists() {
+        "/var"
+    } else {
+        "/"
+    };
+
+    let c_path = CString::new(path).ok()?;
+    let mut stat = MaybeUninit::<libc::statvfs>::uninit();
+
+    let res = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
+    if res != 0 {
+        return None;
+    }
+
+    let stat = unsafe { stat.assume_init() };
+    let total_blocks = stat.f_blocks;
+    let available_blocks = stat.f_bavail;
+
+    if total_blocks == 0 {
+        return None;
+    }
+
+    let used_blocks = total_blocks.saturating_sub(available_blocks);
+    let pct = (used_blocks as f64 / total_blocks as f64) * 100.0;
+    let rounded = (pct * 10.0).round() / 10.0;
+    if used_blocks > 0 && rounded == 0.0 {
+        Some(0.1)
+    } else {
+        Some(rounded)
+    }
 }
 
 fn read_cpu_percent() -> Option<f64> {
@@ -321,3 +361,23 @@ fn uptime_secs() -> i64 {
         .map(|f| f as i64)
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_disk_percent() {
+        let disk = read_disk_percent();
+        assert!(disk.is_some(), "disk percent should be available on Linux");
+        let val = disk.unwrap();
+        assert!(val > 0.0 && val <= 100.0, "disk percent {val} should be between 0 and 100");
+    }
+
+    #[test]
+    fn test_system_metrics() {
+        let (_cpu, _mem, disk) = system_metrics();
+        assert!(disk > 0.0 && disk <= 100.0, "system_metrics disk {disk} should be non-zero");
+    }
+}
+

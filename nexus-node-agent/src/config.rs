@@ -25,7 +25,7 @@ impl Config {
 
         Ok(Config {
             listen_addr: env::var("NODE_AGENT_LISTEN_ADDR")
-                .unwrap_or_else(|_| "0.0.0.0:50051".to_string()),
+                .unwrap_or_else(|_| "127.0.0.1:50051".to_string()),
             insecure,
             tls_cert: env::var("NODE_AGENT_TLS_CERT")
                 .unwrap_or_else(|_| "/etc/nexus/agent.crt".to_string()),

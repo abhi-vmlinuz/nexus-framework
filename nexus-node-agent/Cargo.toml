@@ -12,6 +12,7 @@ prost = "0.13"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+libc = "0.2"
 
 [build-dependencies]
 tonic-build = "0.12"

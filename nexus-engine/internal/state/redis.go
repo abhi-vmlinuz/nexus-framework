@@ -583,31 +583,35 @@ func (s *Store) DeleteVPNConfig(userID string) error {
 	return s.client.Del(s.ctx, fmt.Sprintf("vpn:%s", userID)).Err()
 }
 
-// GetNextAvailableVPNIP returns the next free IP in 10.8.0.2-10.8.0.254.
-// Returns an error if the pool is exhausted (253 concurrent users).
+// GetNextAvailableVPNIP returns the next free IP in 10.8.0.0/22 (10.8.0.2-10.8.3.254).
+// Returns an error if the pool is exhausted (~1015 concurrent users).
 // Deprecated: Use ClaimNextAvailableVPNIP for atomic allocation.
 func (s *Store) GetNextAvailableVPNIP() (string, error) {
 	return s.ClaimNextAvailableVPNIP()
 }
 
-// claimVPNIPScript atomically finds and claims a free VPN IP.
+// claimVPNIPScript atomically finds and claims a free VPN IP in 10.8.0.0/22.
 var claimVPNIPScript = redis.NewScript(`
 local allocated = redis.call('SMEMBERS', KEYS[1])
 local taken = {}
 for _, ip in ipairs(allocated) do taken[ip] = true end
-for i = 2, 254 do
-    local ip = '10.8.0.' .. i
-    if not taken[ip] then
+for o = 0, 3 do
+  for i = 1, 254 do
+    if not (o == 0 and i == 1) then
+      local ip = '10.8.' .. o .. '.' .. i
+      if not taken[ip] then
         redis.call('SADD', KEYS[1], ip)
         return ip
+      end
     end
+  end
 end
 return nil
 `)
 
 // ClaimNextAvailableVPNIP atomically finds and claims the next free IP
-// in 10.8.0.2-10.8.0.254 using a Lua script. Returns an error if the
-// pool is exhausted (253 concurrent users).
+// in 10.8.0.0/22 using a Lua script. Returns an error if the
+// pool is exhausted (~1015 concurrent users).
 func (s *Store) ClaimNextAvailableVPNIP() (string, error) {
 	result, err := claimVPNIPScript.Run(s.ctx, s.client, []string{"vpn_ips"}).Result()
 	if err != nil {

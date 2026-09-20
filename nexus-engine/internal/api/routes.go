@@ -12,6 +12,7 @@ import (
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/nodeagent"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
 	"golang.org/x/time/rate"
 )
 
@@ -23,6 +24,7 @@ type Deps struct {
 	Builder    *registry.Builder
 	Controller *controller.Controller
 	Cfg        *config.Config
+	Telemetry  *telemetry.Logger // may be nil; events skipped then
 }
 
 // Register wires all HTTP routes onto the gin engine.
@@ -92,6 +94,9 @@ func Register(r *gin.Engine, d Deps) {
 		admin.GET("/registry/images", h.GetRegistryImages)
 		admin.GET("/registry/stats", h.GetRegistryStats)
 		admin.GET("/registry/pulls", h.GetRegistryPulls)
+
+		// Telemetry export (JSON/CSV for pitch report)
+		admin.GET("/telemetry/export", h.TelemetryExport)
 
 		// VPN config (WireGuard peer provisioning)
 		vh := newVPNHandler(d)

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
 )
 
 type sessionHandler struct{ d Deps }
@@ -77,6 +78,7 @@ func (h *sessionHandler) Create(c *gin.Context) {
 
 	sessionID := fmt.Sprintf("sess-%s", uuid.New().String()[:8])
 	log.Printf("session %s: creating pod for user=%s challenge=%s", sessionID, req.UserID, req.ChallengeID)
+	createStart := time.Now()
 
 	// Build the spawn request, branching on challenge type.
 	spawnReq := k8s.SpawnRequest{
@@ -110,6 +112,11 @@ func (h *sessionHandler) Create(c *gin.Context) {
 	podInfo, err := h.d.K8s.SpawnPod(spawnReq)
 	if err != nil {
 		log.Printf("session %s: pod spawn failed: %v", sessionID, err)
+		metricSessionCreateTotal.WithLabelValues("failed").Inc()
+		metricSessionCreateDuration.WithLabelValues("failed").Observe(time.Since(createStart).Seconds())
+		if h.d.Telemetry != nil {
+			h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionFailed), UserID: req.UserID, SessionID: sessionID, ChallengeID: req.ChallengeID, DurationMs: time.Since(createStart).Milliseconds(), Status: "failed", Detail: err.Error()})
+		}
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error":   "POD_SPAWN_FAILED",
 			"message": err.Error(),
@@ -172,6 +179,13 @@ func (h *sessionHandler) Create(c *gin.Context) {
 	h.d.Controller.Touch(sessionID, "session_create")
 
 	log.Printf("session %s: created | pod_ip=%s", sessionID, podInfo.PodIP)
+	metricSessionCreateTotal.WithLabelValues("created").Inc()
+	metricSessionCreateDuration.WithLabelValues("created").Observe(time.Since(createStart).Seconds())
+	metricActiveSessions.Inc()
+	if h.d.Telemetry != nil {
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionCreated), UserID: req.UserID, SessionID: sessionID, ChallengeID: req.ChallengeID, DurationMs: time.Since(createStart).Milliseconds(), Status: "created"})
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionReady), UserID: req.UserID, SessionID: sessionID, ChallengeID: req.ChallengeID, DurationMs: time.Since(createStart).Milliseconds(), Status: "ready"})
+	}
 
 	type ServiceInfo struct {
 		Name string `json:"name"`
@@ -296,6 +310,10 @@ func (h *sessionHandler) Terminate(c *gin.Context) {
 	// Update session status.
 	sess.Status = "terminated"
 	h.d.Store.UpdateSession(sess)
+	metricActiveSessions.Dec()
+	if h.d.Telemetry != nil {
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionExpired), UserID: sess.UserID, SessionID: id, ChallengeID: sess.ChallengeID, Status: "terminated"})
+	}
 
 	if _, err := h.d.Store.TouchDesiredVersion(id, "session_terminate"); err != nil {
 		log.Printf("session %s: touch desired version failed: %v", id, err)

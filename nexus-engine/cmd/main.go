@@ -19,6 +19,7 @@ import (
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/nodeagent"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
+	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
 )
 
 func main() {
@@ -79,6 +80,13 @@ func main() {
 	)
 	ctrl.Start()
 
+	// ── Telemetry (file-backed JSONL, survives Redis restarts) ───────────────
+	tel, err := telemetry.New("")
+	if err != nil {
+		log.Printf("telemetry disabled: %v", err)
+		tel = nil
+	}
+
 	// ── HTTP server ─────────────────────────────────────────────────────────
 	if cfg.IsProd() {
 		gin.SetMode(gin.ReleaseMode)
@@ -94,6 +102,7 @@ func main() {
 		Builder:    builder,
 		Controller: ctrl,
 		Cfg:        cfg,
+		Telemetry:  tel,
 	})
 
 	srv := &http.Server{
