@@ -285,7 +285,7 @@ func InstallRedis(backend, url string) (string, error) {
 		if _, err := RunCommand("sudo /usr/local/bin/nerdctl --address /run/k3s/containerd/containerd.sock ps -a | grep nexus-redis"); err == nil {
 			return "Redis already exists, skipping...", nil
 		}
-		return RunCommand("sudo /usr/local/bin/nerdctl --address /run/k3s/containerd/containerd.sock run -d --name nexus-redis --restart always -p 6379:6379 redis:7-alpine")
+		return RunCommand("sudo /usr/local/bin/nerdctl --address /run/k3s/containerd/containerd.sock run -d --name nexus-redis --restart always -p 6379:6379 -v /var/lib/nexus/redis:/data redis:7-alpine redis-server --appendonly yes --save \"60 1000\"")
 	}
 	svc := "redis"
 	if _, err := RunCommand("systemctl list-unit-files redis-server.service"); err == nil {
@@ -303,7 +303,7 @@ func SetupWireGuard() (string, error) {
 	WG_KEY=$(wg genkey);
 	WG_PUB=$(echo "$WG_KEY" | wg pubkey);
 	echo "[Interface]
-Address = 10.8.0.1/24
+Address = 10.8.0.1/22
 ListenPort = 51820
 PrivateKey = $WG_KEY
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
@@ -587,7 +587,7 @@ Type=simple
 ExecStart=/usr/local/bin/nexus-node-agent
 Restart=on-failure
 Environment=NEXUS_MODE=%s
-Environment=NODE_AGENT_LISTEN_ADDR=0.0.0.0:50051
+Environment=NODE_AGENT_LISTEN_ADDR=127.0.0.1:50051
 Environment=NODE_AGENT_INSECURE=%s
 Environment=NODE_AGENT_TLS_CERT=/etc/nexus/agent-server.crt
 Environment=NODE_AGENT_TLS_KEY=/etc/nexus/agent-server.key
@@ -712,7 +712,7 @@ spec:
   ingress:
     - from:
         - ipBlock:
-            cidr: 10.8.0.0/24
+            cidr: 10.8.0.0/22
   egress:
     - {}
   policyTypes:

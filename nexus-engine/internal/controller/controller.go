@@ -42,6 +42,15 @@ var (
 		Name: "nexus_nodeagent_rpc_errors_total",
 		Help: "Total node agent RPC errors encountered during reconciliation.",
 	})
+	metricReconcileDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "nexus_reconcile_duration_seconds",
+		Help:    "Reconcile job latency.",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
+	})
+	metricQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "nexus_controller_queue_depth",
+		Help: "Current controller queued + in-flight jobs.",
+	})
 )
 
 // ─── Controller ───────────────────────────────────────────────────────────────
@@ -153,6 +162,7 @@ func (c *Controller) Stats() Stats {
 	if !c.started {
 		status = "not_started"
 	}
+	metricQueueDepth.Set(float64(len(c.queued) + len(c.inFlight)))
 	return Stats{
 		Queued:   len(c.queued),
 		InFlight: len(c.inFlight),
@@ -185,6 +195,7 @@ func (c *Controller) enqueue(sessionID, reason string) {
 
 func (c *Controller) workerLoop(workerID int) {
 	for job := range c.jobs {
+		loopStart := time.Now()
 		c.mu.Lock()
 		delete(c.queued, job.sessionID)
 		if c.inFlight[job.sessionID] {
@@ -214,6 +225,7 @@ func (c *Controller) workerLoop(workerID int) {
 		c.mu.Lock()
 		delete(c.inFlight, job.sessionID)
 		c.mu.Unlock()
+		metricReconcileDuration.Observe(time.Since(loopStart).Seconds())
 	}
 }
 

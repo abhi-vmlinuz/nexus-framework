@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -514,5 +515,5 @@ func (c *Client) EnsureImagePullSecret(name, registry, user, pass string) error 
 }
 
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "not found")
+	return err != nil && apierrors.IsNotFound(err)
 }
