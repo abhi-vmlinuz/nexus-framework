@@ -74,6 +74,16 @@ func Register(r *gin.Engine, d Deps) {
 		v1.DELETE("/sessions/:id", sh.Terminate)
 		v1.POST("/sessions/:id/extend", sh.Extend)
 
+		// Session interactive terminal (WebSocket PTY)
+		th := newTerminalHandler(d)
+		v1.GET("/sessions/:id/terminal", th.Connect)
+
+		// Session workspace file sync & execution
+		fh := newFileHandler(d)
+		v1.PUT("/sessions/:id/files", fh.WriteFile)
+		v1.GET("/sessions/:id/files/:filename", fh.ReadFile)
+		v1.POST("/sessions/:id/exec", fh.Exec)
+
 		// Admin / operator endpoints
 		admin := v1.Group("/admin")
 		h := newAdminHandler(d)
