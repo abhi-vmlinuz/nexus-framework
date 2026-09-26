@@ -266,7 +266,10 @@ func (m Model) runInstallation(step int) tea.Cmd {
 				return internal.WriteConfigFile(home, conf)
 			}},
 			{"Phase 10/12: Orchestrating systemd services...", func() (string, error) {
-				return internal.SetupServices(m.Mode, m.EnginePort, m.RedisURL, m.RegistryURL, "127.0.0.1:50051", m.K8sNamespace)
+				if _, err := internal.SetupServices(m.Mode, m.EnginePort, m.RedisURL, m.RegistryURL, "127.0.0.1:50051", m.K8sNamespace); err != nil {
+					return "", err
+				}
+				return internal.SetupNerdctlSudo(os.Getenv("SUDO_USER"))
 			}},
 			{"Phase 11/12: Applying Network Policies...", func() (string, error) {
 				return internal.SetupNetworkPolicies(m.Mode, m.K8sNamespace)

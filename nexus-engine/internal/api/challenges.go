@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 type challengeHandler struct{ d Deps }
@@ -148,10 +149,50 @@ func (h *challengeHandler) storeBuildLogs(challengeID string, containers []regis
 	}
 }
 
+// validateResources rejects malformed CPU/memory quantities at registration time.
+// Without this, garbage like cpu:"lots" is stored and then silently dropped at
+// spawn (ParseQuantity fails), leaving the container unbounded — an OOM risk.
+func validateResources(r *state.Resources) error {
+	if r == nil {
+		return nil
+	}
+	if r.CPU != "" {
+		if _, err := resource.ParseQuantity(r.CPU); err != nil {
+			return fmt.Errorf("resources.cpu %q: invalid quantity (e.g. 500m, 0.5): %w", r.CPU, err)
+		}
+	}
+	if r.Memory != "" {
+		if _, err := resource.ParseQuantity(r.Memory); err != nil {
+			return fmt.Errorf("resources.memory %q: invalid quantity (e.g. 128Mi, 512M): %w", r.Memory, err)
+		}
+	}
+	return nil
+}
+
+func validateContainersResources(cts []state.ContainerSpec) error {
+	for _, ct := range cts {
+		if err := validateResources(ct.Resources); err != nil {
+			return fmt.Errorf("container %q: %w", ct.Name, err)
+		}
+	}
+	return nil
+}
+
 // Create registers a new challenge by building its Docker image.
 func (h *challengeHandler) Create(c *gin.Context) {
 	var req CreateChallengeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate top-level resources early (single-container + compose defaults).
+	if err := validateResources(req.Resources); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Validate pre-built per-container resources early.
+	if err := validateContainersResources(req.Containers); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -234,6 +275,27 @@ func (h *challengeHandler) Create(c *gin.Context) {
 
 		// Store build logs on success.
 		h.storeBuildLogs(challengeID, parsed.Build.Containers)
+
+		// Top-level resources act as defaults for compose services that don't
+		// declare their own (e.g. --cpu/--memory on register --compose).
+		// Without this, compose challenges silently ignore those flags.
+		if req.Resources != nil {
+			for i := range parsed.Containers {
+				if parsed.Containers[i].Resources == nil {
+					parsed.Containers[i].Resources = &state.Resources{}
+				}
+				if parsed.Containers[i].Resources.CPU == "" {
+					parsed.Containers[i].Resources.CPU = req.Resources.CPU
+				}
+				if parsed.Containers[i].Resources.Memory == "" {
+					parsed.Containers[i].Resources.Memory = req.Resources.Memory
+				}
+			}
+		}
+		if err := validateContainersResources(parsed.Containers); err != nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+			return
+		}
 
 		ch = state.Challenge{
 			ID:         challengeID,

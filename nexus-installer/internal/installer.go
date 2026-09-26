@@ -627,6 +627,33 @@ WantedBy=multi-user.target`)
 	return RunCommand("sudo systemctl restart nexus-node-agent nexus-engine")
 }
 
+// SetupNerdctlSudo grants the installing user scoped passwordless sudo for
+// nerdctl only. Non-root nerdctl ignores --address and falls back to a
+// rootless socket that doesn't exist, so without this every manual nerdctl
+// call needs a password. Engine (root) is unaffected either way.
+func SetupNerdctlSudo(user string) (string, error) {
+	if user == "" {
+		if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" {
+			user = sudoUser
+		}
+	}
+	if user == "" || user == "root" {
+		return "Skipped nerdctl sudoers entry (no non-root installing user)", nil
+	}
+	entry := fmt.Sprintf("%s ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl\n", user)
+	if err := os.WriteFile("/tmp/nexus-nerdctl", []byte(entry), 0440); err != nil {
+		return "", err
+	}
+	if _, err := RunCommand("sudo mv /tmp/nexus-nerdctl /etc/sudoers.d/nexus-nerdctl && sudo chmod 440 /etc/sudoers.d/nexus-nerdctl"); err != nil {
+		return "", err
+	}
+	if out, err := RunCommand("sudo visudo -c -q"); err != nil {
+		RunCommand("sudo rm -f /etc/sudoers.d/nexus-nerdctl")
+		return out, fmt.Errorf("sudoers check failed, entry removed: %w", err)
+	}
+	return fmt.Sprintf("Passwordless sudo granted for nerdctl (%s)", user), nil
+}
+
 // SetupShellCompletion adds the nexus completion command to the user's shell profile.
 func SetupShellCompletion(home string) (string, error) {
 	var summary []string

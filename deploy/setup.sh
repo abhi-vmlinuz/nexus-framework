@@ -407,6 +407,20 @@ if [[ "$sock_group" != "nexus" ]]; then
 fi
 ok "Socket permission persistence enabled (systemd-path, group=nexus)"
 
+# Scoped passwordless sudo for nerdctl (human ops only — engine runs as root).
+# Non-root nerdctl ignores --address and falls back to a rootless socket that
+# doesn't exist, so without this every manual nerdctl call needs a password.
+if [[ -n "${SUDO_USER:-}" ]]; then
+  echo "${SUDO_USER} ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl" > /etc/sudoers.d/nexus-nerdctl
+  chmod 440 /etc/sudoers.d/nexus-nerdctl
+  if visudo -c -q 2>/dev/null; then
+    ok "Passwordless sudo granted for nerdctl (${SUDO_USER})"
+  else
+    warn "sudoers check failed — removing nexus-nerdctl entry"
+    rm -f /etc/sudoers.d/nexus-nerdctl
+  fi
+fi
+
 # ─── Phase 3.5: BuildKit ──────────────────────────────────────────────────────
 if ! systemctl is-active buildkit &>/dev/null; then
   info "Configuring BuildKit daemon..."

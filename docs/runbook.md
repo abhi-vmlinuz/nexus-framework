@@ -34,6 +34,19 @@ Verify:
 * `redis`: `"ok"`
 * `node_agent`: `"healthy"` (reports non-zero `disk_percent`, `cpu_percent`, `mem_percent`)
 
+### 2.1a Verify Container-Runtime Access (non-root nerdctl)
+```bash
+# Socket must stay group-readable or manual nerdctl calls break on k3s restart
+stat -c %G /run/k3s/containerd/containerd.sock  # expect: nexus
+systemctl is-active nexus-socket-fix.path       # expect: active
+
+# Non-root nerdctl ignores --address and dies on a rootless socket that
+# doesn't exist, so human ops go through scoped passwordless sudo
+# (installed by setup.sh / installer Phase 10 for the installing user):
+sudo -n nerdctl --address /run/k3s/containerd/containerd.sock --namespace k8s.io ps | head -3
+```
+If the socket group isn't `nexus`, re-run: `sudo chown root:nexus /run/k3s/containerd/containerd.sock && sudo chmod 660 /run/k3s/containerd/containerd.sock`. If `sudo -n nerdctl` asks for a password, recreate `/etc/sudoers.d/nexus-nerdctl` with `<user> ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl` (mode 440) and verify with `sudo visudo -c -q`.
+
 ### 2.2 Verify Redis Persistence
 ```bash
 # Confirm volume mount and AOF
