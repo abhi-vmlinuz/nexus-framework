@@ -395,7 +395,17 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now nexus-socket-fix.path
-ok "Socket permission persistence enabled (systemd-path)"
+# Fail loudly if the socket perms didn't stick (k3s recreates this socket
+# root:root on every restart — without group access, non-root nerdctl breaks).
+sleep 2
+if ! systemctl is-active nexus-socket-fix.path &>/dev/null; then
+  die "nexus-socket-fix.path is not active — containerd socket perms will revert on k3s restart"
+fi
+sock_group=$(stat -c %G "$SOCKET" 2>/dev/null || echo "unknown")
+if [[ "$sock_group" != "nexus" ]]; then
+  die "containerd socket group is '$sock_group', expected 'nexus' — non-root nerdctl will fail"
+fi
+ok "Socket permission persistence enabled (systemd-path, group=nexus)"
 
 # ─── Phase 3.5: BuildKit ──────────────────────────────────────────────────────
 if ! systemctl is-active buildkit &>/dev/null; then
