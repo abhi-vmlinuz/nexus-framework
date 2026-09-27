@@ -47,7 +47,7 @@ type wsWriter struct {
 func (w *wsWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	err := w.conn.WriteMessage(websocket.TextMessage, p)
+	err := w.conn.WriteMessage(websocket.BinaryMessage, p)
 	if err != nil {
 		return 0, err
 	}
