@@ -1,0 +1,51 @@
+# Prometheus configuration for Nexus Framework.
+#
+# Runs as a host-level container (see setup.sh) alongside Redis and the
+# registry, so it can reach the engine on loopback without extra networking.
+#
+# Cluster data (pod metrics, pod labels) is read through a local `kubectl
+# proxy` bridge on 127.0.0.1:8001. That bridge uses the existing k3s admin
+# kubeconfig, so no service-account or RBAC setup is needed.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: nexus
+
+rule_files:
+  - /etc/prometheus/rules.yaml
+
+scrape_configs:
+  # ── Nexus engine ────────────────────────────────────────────────────────────
+  # /metrics is authenticated, so the key is supplied as a bearer token.
+  # The file contains the raw key with no trailing newline.
+  - job_name: nexus-engine
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/api-key
+    static_configs:
+      - targets: ["127.0.0.1:8081"]
+        labels:
+          component: engine
+
+  # ── Per-pod CPU, memory, network (cAdvisor via kubelet) ────────────────────
+  # Accessed through the API server proxy, which reaches the kubelet on our
+  # behalf. This is what gives per-pod resource series.
+  - job_name: kubernetes-cadvisor
+    metrics_path: /api/v1/nodes/nexus-server/proxy/metrics/cadvisor
+    static_configs:
+      - targets: ["127.0.0.1:8001"]
+        labels:
+          component: kubelet-cadvisor
+
+  # ── Pod identity labels (kube-state-metrics) ───────────────────────────────
+  # Carries nexus-session-id / nexus-user-id / nexus-challenge-id as metric
+  # labels, which is how resource series get attributed to a session and user.
+  - job_name: kube-state-metrics
+    metrics_path: /api/v1/namespaces/kube-system/services/kube-state-metrics:http/proxy/metrics
+    static_configs:
+      - targets: ["127.0.0.1:8001"]
+        labels:
+          component: kube-state-metrics
