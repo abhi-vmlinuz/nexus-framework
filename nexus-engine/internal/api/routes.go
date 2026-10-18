@@ -32,7 +32,8 @@ func Register(r *gin.Engine, d Deps) {
 	// Rate limiting middleware — 10 requests/sec per process (global).
 	r.Use(RateLimit(10))
 
-	// Health
+	// Health — deliberately unauthenticated so load balancers and the
+	// installer can probe liveness without credentials.
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "healthy",
@@ -42,11 +43,13 @@ func Register(r *gin.Engine, d Deps) {
 		})
 	})
 
-	// Metrics (prometheus)
-	r.GET("/metrics", metricsHandler())
-
-	// Auth middleware — protects all /api/v1/* endpoints
+	// Auth middleware — applies to every route registered below. /metrics is
+	// registered after it so node, WireGuard, and session metrics are not
+	// world-readable on a port bound to all interfaces.
 	r.Use(RequireAPIKey(d.Cfg))
+
+	// Metrics (prometheus). Prometheus authenticates with a bearer token.
+	r.GET("/metrics", metricsHandler())
 
 	// Debug endpoints
 	dbg := r.Group("/debug")

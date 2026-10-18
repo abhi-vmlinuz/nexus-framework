@@ -66,7 +66,7 @@ ip addr show wg0 | grep "10.8.0.1/22"
 ### 2.4 Verify Monitoring & Alerts
 1. Import `deploy/monitoring/grafana-dashboard.json` into Grafana.
 2. Load alert rules in Prometheus: `deploy/monitoring/alerts.yaml`.
-3. Check that Prometheus targets `/metrics` on `http://localhost:8081/metrics`.
+3. Confirm Prometheus scrapes the engine with its API key: `http://localhost:8081/metrics` requires `Authorization: Bearer <key>`, so the scrape config needs `authorization.credentials_file` pointing at a file containing the key. An unauthenticated request should return 401.
 
 ---
 

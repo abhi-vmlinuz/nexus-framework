@@ -9,12 +9,15 @@ import (
 )
 
 // RequireAPIKey returns gin middleware that enforces API key authentication.
-// Public endpoints (/health, /metrics) are exempt.
+// Only /health is exempt, so liveness probes work without credentials.
+// /metrics is NOT exempt: node, WireGuard, and per-session data must not be
+// readable by anyone who can reach the engine port. Prometheus supplies the key
+// with bearer_token_file.
 // If no key is configured, all requests are allowed (auth disabled).
 func RequireAPIKey(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Public endpoints — no auth required
-		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/metrics" {
+		// Public endpoint — no auth required
+		if c.Request.URL.Path == "/health" {
 			c.Next()
 			return
 		}
