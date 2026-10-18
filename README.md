@@ -339,7 +339,9 @@ curl -X PUT http://localhost:8081/api/v1/admin/registry \
 
 ### API Key Authentication
 
-The engine requires an API key for all endpoints except `/health` and `/metrics`. The key is set during installation and stored in `/etc/nexus/engine.env`.
+The engine requires an API key for all endpoints except `/health`. The key is set during installation and stored in `/etc/nexus/engine.env`.
+
+`/metrics` is authenticated too, so a scrape config must send the key (`bearer_token_file` in Prometheus).
 
 ```bash
 # View current key

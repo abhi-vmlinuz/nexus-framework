@@ -3,9 +3,11 @@
 package k8s
 
 import (
+	"bytes"
 	"context"
 	b64 "encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,8 +21,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 const (
@@ -107,8 +111,9 @@ type ResourceInfo struct {
 
 // Client is the Kubernetes adapter for nexus-engine.
 type Client struct {
-	clientset *kubernetes.Clientset
-	namespace string
+	clientset  *kubernetes.Clientset
+	restConfig *rest.Config
+	namespace  string
 }
 
 // k8sCtx returns a context with a 30-second timeout for K8s API calls.
@@ -147,11 +152,19 @@ func New(namespace string) (*Client, error) {
 		}
 		log.Printf("created namespace %s", namespace)
 	}
-	return &Client{clientset: cs, namespace: namespace}, nil
+	return &Client{clientset: cs, restConfig: cfg, namespace: namespace}, nil
 }
 
 func (c *Client) Clientset() *kubernetes.Clientset {
 	return c.clientset
+}
+
+func (c *Client) RestConfig() *rest.Config {
+	return c.restConfig
+}
+
+func (c *Client) Namespace() string {
+	return c.namespace
 }
 
 // SpawnPod creates a challenge pod and waits for it to receive a pod IP.
@@ -517,3 +530,70 @@ func (c *Client) EnsureImagePullSecret(name, registry, user, pass string) error 
 func isNotFound(err error) bool {
 	return err != nil && apierrors.IsNotFound(err)
 }
+
+// ExecStream attaches to a running pod and streams stdin/stdout/stderr via SPDY.
+// It supports interactive TTY and window resize events.
+func (c *Client) ExecStream(ctx context.Context, sessionID, containerName string, cmd []string, tty bool, stdin io.Reader, stdout, stderr io.Writer, sizeQueue remotecommand.TerminalSizeQueue) error {
+	podName := podNamePrefix + sessionID
+	req := c.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(c.namespace).
+		SubResource("exec")
+
+	opts := &corev1.PodExecOptions{
+		Command: cmd,
+		Stdin:   stdin != nil,
+		Stdout:  stdout != nil,
+		Stderr:  stderr != nil,
+		TTY:     tty,
+	}
+	if containerName != "" {
+		opts.Container = containerName
+	}
+	req.VersionedParams(opts, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(c.restConfig, "POST", req.URL())
+	if err != nil {
+		return fmt.Errorf("create spdy executor: %w", err)
+	}
+
+	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Tty:               tty,
+		TerminalSizeQueue: sizeQueue,
+	})
+}
+
+// Exec runs a non-interactive command inside the pod and captures stdout/stderr.
+func (c *Client) Exec(ctx context.Context, sessionID, containerName string, cmd []string, stdin io.Reader) (string, string, error) {
+	var stdout, stderr bytes.Buffer
+	err := c.ExecStream(ctx, sessionID, containerName, cmd, false, stdin, &stdout, &stderr, nil)
+	return stdout.String(), stderr.String(), err
+}
+
+// WriteHomeFile writes file content directly into $HOME/<filename> inside the student pod.
+func (c *Client) WriteHomeFile(ctx context.Context, sessionID, filename string, content []byte) error {
+	cleanName := filepath.Base(filename)
+	cmd := []string{"/bin/sh", "-c", fmt.Sprintf("cat > \"$HOME/%s\"", cleanName)}
+	_, stderr, err := c.Exec(ctx, sessionID, "", cmd, bytes.NewReader(content))
+	if err != nil {
+		return fmt.Errorf("write home file %s: %w (stderr: %s)", cleanName, err, stderr)
+	}
+	return nil
+}
+
+// ReadHomeFile reads file content from $HOME/<filename> inside the student pod.
+func (c *Client) ReadHomeFile(ctx context.Context, sessionID, filename string) ([]byte, error) {
+	cleanName := filepath.Base(filename)
+	cmd := []string{"/bin/sh", "-c", fmt.Sprintf("cat \"$HOME/%s\"", cleanName)}
+	var stdout, stderr bytes.Buffer
+	err := c.ExecStream(ctx, sessionID, "", cmd, false, nil, &stdout, &stderr, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read home file %s: %w (stderr: %s)", cleanName, err, stderr.String())
+	}
+	return stdout.Bytes(), nil
+}
+

@@ -13,7 +13,17 @@ All API endpoints are prefixed with:
 
 All endpoints require an API key via the `Authorization: Bearer <key>` header, except:
 - `GET /health` — public
-- `GET /metrics` — public
+
+`GET /metrics` requires the key like any other endpoint. Configure the scraper to send it:
+
+```yaml
+scrape_configs:
+  - job_name: nexus-engine
+    authorization:
+      credentials_file: /etc/nexus/api-key
+    static_configs:
+      - targets: ["127.0.0.1:8081"]
+```
 
 If no key is configured, all endpoints are open (auth disabled).
 
@@ -644,7 +654,7 @@ Switch the container registry at runtime without restarting the engine.
 
 ## Meta & Diagnostics
 
-- `/health`: Liveness check for the Engine process.
-- `/metrics`: Prometheus-compatible metrics endpoint.
+- `/health`: Liveness check for the Engine process. Public.
+- `/metrics`: Prometheus-compatible metrics endpoint. Requires the API key.
 - `/debug/system`: High-level system statistics (Total sessions, total pods).
 - `/debug/controller`: Internal reconciler loop statistics.

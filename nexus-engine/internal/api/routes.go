@@ -32,7 +32,8 @@ func Register(r *gin.Engine, d Deps) {
 	// Rate limiting middleware — 10 requests/sec per process (global).
 	r.Use(RateLimit(10))
 
-	// Health
+	// Health — deliberately unauthenticated so load balancers and the
+	// installer can probe liveness without credentials.
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "healthy",
@@ -42,11 +43,13 @@ func Register(r *gin.Engine, d Deps) {
 		})
 	})
 
-	// Metrics (prometheus)
-	r.GET("/metrics", metricsHandler())
-
-	// Auth middleware — protects all /api/v1/* endpoints
+	// Auth middleware — applies to every route registered below. /metrics is
+	// registered after it so node, WireGuard, and session metrics are not
+	// world-readable on a port bound to all interfaces.
 	r.Use(RequireAPIKey(d.Cfg))
+
+	// Metrics (prometheus). Prometheus authenticates with a bearer token.
+	r.GET("/metrics", metricsHandler())
 
 	// Debug endpoints
 	dbg := r.Group("/debug")
@@ -73,6 +76,16 @@ func Register(r *gin.Engine, d Deps) {
 		v1.GET("/sessions/:id", sh.Get)
 		v1.DELETE("/sessions/:id", sh.Terminate)
 		v1.POST("/sessions/:id/extend", sh.Extend)
+
+		// Session interactive terminal (WebSocket PTY)
+		th := newTerminalHandler(d)
+		v1.GET("/sessions/:id/terminal", th.Connect)
+
+		// Session workspace file sync & execution
+		fh := newFileHandler(d)
+		v1.PUT("/sessions/:id/files", fh.WriteFile)
+		v1.GET("/sessions/:id/files/:filename", fh.ReadFile)
+		v1.POST("/sessions/:id/exec", fh.Exec)
 
 		// Admin / operator endpoints
 		admin := v1.Group("/admin")

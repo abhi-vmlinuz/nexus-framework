@@ -395,7 +395,31 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now nexus-socket-fix.path
-ok "Socket permission persistence enabled (systemd-path)"
+# Fail loudly if the socket perms didn't stick (k3s recreates this socket
+# root:root on every restart — without group access, non-root nerdctl breaks).
+sleep 2
+if ! systemctl is-active nexus-socket-fix.path &>/dev/null; then
+  die "nexus-socket-fix.path is not active — containerd socket perms will revert on k3s restart"
+fi
+sock_group=$(stat -c %G "$SOCKET" 2>/dev/null || echo "unknown")
+if [[ "$sock_group" != "nexus" ]]; then
+  die "containerd socket group is '$sock_group', expected 'nexus' — non-root nerdctl will fail"
+fi
+ok "Socket permission persistence enabled (systemd-path, group=nexus)"
+
+# Scoped passwordless sudo for nerdctl (human ops only — engine runs as root).
+# Non-root nerdctl ignores --address and falls back to a rootless socket that
+# doesn't exist, so without this every manual nerdctl call needs a password.
+if [[ -n "${SUDO_USER:-}" ]]; then
+  echo "${SUDO_USER} ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl" > /etc/sudoers.d/nexus-nerdctl
+  chmod 440 /etc/sudoers.d/nexus-nerdctl
+  if visudo -c -q 2>/dev/null; then
+    ok "Passwordless sudo granted for nerdctl (${SUDO_USER})"
+  else
+    warn "sudoers check failed — removing nexus-nerdctl entry"
+    rm -f /etc/sudoers.d/nexus-nerdctl
+  fi
+fi
 
 # ─── Phase 3.5: BuildKit ──────────────────────────────────────────────────────
 if ! systemctl is-active buildkit &>/dev/null; then
