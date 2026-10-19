@@ -1,7 +1,13 @@
 # Prometheus configuration for Nexus Framework.
 #
-# Runs as a host-level container (see setup.sh) alongside Redis and the
-# registry, so it can reach the engine on loopback without extra networking.
+# This file is a template. setup.sh and the TUI installer render the two
+# placeholders below before starting Prometheus:
+#
+#   __NODE_NAME__    the k3s node name (read from the cluster, not guessed)
+#   __ENGINE_PORT__  the port nexus-engine listens on
+#
+# Prometheus runs as a host-level container (see setup.sh) alongside Redis and
+# the registry, so it can reach the engine on loopback without extra networking.
 #
 # Cluster data (pod metrics, pod labels) is read through a local `kubectl
 # proxy` bridge on 127.0.0.1:8001. That bridge uses the existing k3s admin
@@ -26,7 +32,7 @@ scrape_configs:
       type: Bearer
       credentials_file: /etc/prometheus/api-key
     static_configs:
-      - targets: ["127.0.0.1:8081"]
+      - targets: ["127.0.0.1:__ENGINE_PORT__"]
         labels:
           component: engine
 
@@ -34,7 +40,7 @@ scrape_configs:
   # Accessed through the API server proxy, which reaches the kubelet on our
   # behalf. This is what gives per-pod resource series.
   - job_name: kubernetes-cadvisor
-    metrics_path: /api/v1/nodes/nexus-server/proxy/metrics/cadvisor
+    metrics_path: /api/v1/nodes/__NODE_NAME__/proxy/metrics/cadvisor
     static_configs:
       - targets: ["127.0.0.1:8001"]
         labels:

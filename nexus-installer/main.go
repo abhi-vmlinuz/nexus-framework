@@ -222,19 +222,19 @@ func (m Model) runInstallation(step int) tea.Cmd {
 			name string
 			fn   func() (string, error)
 		}{
-			{"Phase 0/12: Initializing environment...", func() (string, error) { return internal.InitializeInstaller() }},
-			{"Phase 1/12: Installing system packages...", func() (string, error) { return internal.InstallPackages(m.RedisBackend) }},
-			{"Phase 2/12: Setting up k3s...", func() (string, error) { return internal.InstallK3s(m.K8sNamespace) }},
-			{"Phase 3/12: Configuring nerdctl & permissions...", func() (string, error) { return internal.InstallNerdctl(user) }},
-			{"Phase 4/12: Configuring registry...", func() (string, error) { return internal.SetupRegistry(m.RegistryType, m.RegistryURL, m.RegistryUser, m.RegistryPass) }},
-			{"Phase 5/12: Deploying Redis...", func() (string, error) { return internal.InstallRedis(m.RedisBackend, m.RedisURL) }},
-			{"Phase 6/12: Setting up WireGuard...", func() (string, error) {
+			{"Phase 0/13: Initializing environment...", func() (string, error) { return internal.InitializeInstaller() }},
+			{"Phase 1/13: Installing system packages...", func() (string, error) { return internal.InstallPackages(m.RedisBackend) }},
+			{"Phase 2/13: Setting up k3s...", func() (string, error) { return internal.InstallK3s(m.K8sNamespace) }},
+			{"Phase 3/13: Configuring nerdctl & permissions...", func() (string, error) { return internal.InstallNerdctl(user) }},
+			{"Phase 4/13: Configuring registry...", func() (string, error) { return internal.SetupRegistry(m.RegistryType, m.RegistryURL, m.RegistryUser, m.RegistryPass) }},
+			{"Phase 5/13: Deploying Redis...", func() (string, error) { return internal.InstallRedis(m.RedisBackend, m.RedisURL) }},
+			{"Phase 6/13: Setting up WireGuard...", func() (string, error) {
 				if m.Mode == "prod" {
 					return internal.SetupWireGuard()
 				}
 				return "Skipped (Dev mode)", nil
 			}},
-			{"Phase 7/12: Building & installing Nexus binaries...", func() (string, error) {
+			{"Phase 7/13: Building & installing Nexus binaries...", func() (string, error) {
 				cwd, _ := os.Getwd()
 				repoRoot := cwd
 				// Detect repo root by looking for nexus-engine
@@ -246,10 +246,10 @@ func (m Model) runInstallation(step int) tea.Cmd {
 				}
 				return internal.BuildAndInstallBinaries(repoRoot)
 			}},
-			{"Phase 8/12: Generating mTLS certificates...", func() (string, error) {
+			{"Phase 8/13: Generating mTLS certificates...", func() (string, error) {
 				return internal.SetupMTLSCertificates(m.Mode)
 			}},
-			{"Phase 9/12: Writing Nexus configuration...", func() (string, error) {
+			{"Phase 9/13: Writing Nexus configuration...", func() (string, error) {
 				conf := internal.Config{
 					Mode:          m.Mode,
 					RedisBackend:  m.RedisBackend,
@@ -265,16 +265,27 @@ func (m Model) runInstallation(step int) tea.Cmd {
 				}
 				return internal.WriteConfigFile(home, conf)
 			}},
-			{"Phase 10/12: Orchestrating systemd services...", func() (string, error) {
+			{"Phase 10/13: Orchestrating systemd services...", func() (string, error) {
 				if _, err := internal.SetupServices(m.Mode, m.EnginePort, m.RedisURL, m.RegistryURL, "127.0.0.1:50051", m.K8sNamespace); err != nil {
 					return "", err
 				}
 				return internal.SetupNerdctlSudo(os.Getenv("SUDO_USER"))
 			}},
-			{"Phase 11/12: Applying Network Policies...", func() (string, error) {
+			{"Phase 11/13: Deploying Prometheus & Grafana...", func() (string, error) {
+				cwd, _ := os.Getwd()
+				repoRoot := cwd
+				for i := 0; i < 3; i++ {
+					if _, err := os.Stat(filepath.Join(repoRoot, "nexus-engine")); err == nil {
+						break
+					}
+					repoRoot = filepath.Dir(repoRoot)
+				}
+				return internal.SetupMonitoring(m.EnginePort, repoRoot)
+			}},
+			{"Phase 12/13: Applying Network Policies...", func() (string, error) {
 				return internal.SetupNetworkPolicies(m.Mode, m.K8sNamespace)
 			}},
-			{"Phase 12/12: Finalizing shell completion...", func() (string, error) {
+			{"Phase 13/13: Finalizing shell completion...", func() (string, error) {
 				return internal.SetupShellCompletion(home)
 			}},
 		}

@@ -1,0 +1,18 @@
+# Grafana dashboard provisioning.
+#
+# Dashboards are read from a directory rather than created through the UI, so a
+# fresh install and an upgraded install show the same panels. Files are watched
+# every 30s, which means replacing the JSON on disk updates a running Grafana.
+apiVersion: 1
+
+providers:
+  - name: nexus
+    orgId: 1
+    folder: Nexus
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

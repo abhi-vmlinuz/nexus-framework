@@ -627,6 +627,169 @@ WantedBy=multi-user.target`)
 	return RunCommand("sudo systemctl restart nexus-node-agent nexus-engine")
 }
 
+// SetupMonitoring deploys the host-level observability stack: a loopback
+// kubectl proxy, kube-state-metrics, Prometheus, and Grafana.
+//
+// Mirrors the "Phase 8.5" block in deploy/setup.sh. Scrapes reach the cluster
+// through kubectl proxy so no ServiceAccount, ClusterRole, NodePort, or kubelet
+// TLS configuration is needed.
+func SetupMonitoring(port, repoRoot string) (string, error) {
+	const nerdctl = "sudo /usr/local/bin/nerdctl --address /run/k3s/containerd/containerd.sock"
+
+	src := filepath.Join(repoRoot, "deploy", "monitoring")
+	if _, err := os.Stat(src); err != nil {
+		return "deploy/monitoring not found, skipping monitoring stack", nil
+	}
+
+	dir := "/etc/nexus/monitoring"
+	for _, d := range []string{
+		dir,
+		filepath.Join(dir, "grafana", "provisioning", "datasources"),
+		filepath.Join(dir, "grafana", "provisioning", "dashboards"),
+		filepath.Join(dir, "grafana", "dashboards"),
+	} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return "", err
+		}
+	}
+
+	copies := map[string]string{
+		"rules.yaml":              filepath.Join(dir, "rules.yaml"),
+		"kube-state-metrics.yaml": filepath.Join(dir, "kube-state-metrics.yaml"),
+		"grafana/provisioning/datasources/prometheus.yml": filepath.Join(dir, "grafana", "provisioning", "datasources", "prometheus.yml"),
+		"grafana/provisioning/dashboards/nexus.yml":       filepath.Join(dir, "grafana", "provisioning", "dashboards", "nexus.yml"),
+		"grafana-dashboard.json": filepath.Join(dir, "grafana", "dashboards", "nexus.json"),
+	}
+	for rel, dst := range copies {
+		if err := copyFile(filepath.Join(src, rel), dst); err != nil {
+			return "", fmt.Errorf("copy %s: %w", rel, err)
+		}
+	}
+
+	// k3s allows the node name to differ from the hostname, and a wrong name
+	// silently breaks the cAdvisor scrape, so read it from the cluster.
+	nodeName := "nexus-server"
+	if out, err := RunCommand("sudo k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}'"); err == nil {
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			nodeName = trimmed
+		}
+	}
+
+	cfg, err := os.ReadFile(filepath.Join(src, "prometheus.yml"))
+	if err != nil {
+		return "", err
+	}
+	rendered := strings.ReplaceAll(string(cfg), "__NODE_NAME__", nodeName)
+	rendered = strings.ReplaceAll(rendered, "__ENGINE_PORT__", port)
+	if err := os.WriteFile(filepath.Join(dir, "prometheus.yml"), []byte(rendered), 0644); err != nil {
+		return "", err
+	}
+
+	// Prometheus reads the key from a file so it never shows up in `ps`.
+	apiKey := "none"
+	if env, err := os.ReadFile("/etc/nexus/engine.env"); err == nil {
+		for _, line := range strings.Split(string(env), "\n") {
+			if strings.HasPrefix(line, "NEXUS_API_KEY=") {
+				apiKey = strings.TrimSpace(strings.TrimPrefix(line, "NEXUS_API_KEY="))
+				break
+			}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "api-key"), []byte(apiKey), 0600); err != nil {
+		return "", err
+	}
+
+	// Grafana admin password: generated once, preserved on re-install.
+	passPath := filepath.Join(dir, "grafana-admin.txt")
+	grafanaPass := ""
+	if existing, err := os.ReadFile(passPath); err == nil {
+		grafanaPass = strings.TrimSpace(string(existing))
+	}
+	if grafanaPass == "" {
+		buf := make([]byte, 16)
+		if _, err := rand.Read(buf); err == nil {
+			grafanaPass = hex.EncodeToString(buf)
+		}
+		if err := os.WriteFile(passPath, []byte(grafanaPass), 0600); err != nil {
+			return "", err
+		}
+	}
+
+	proxyUnit := `[Unit]
+Description=Nexus k3s API proxy (loopback only, for Prometheus scrapes)
+After=k3s.service
+Requires=k3s.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/k3s kubectl proxy --port=8001 --address=127.0.0.1 --kubeconfig=/etc/rancher/k3s/k3s.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+SyslogIdentifier=nexus-kubectl-proxy
+
+[Install]
+WantedBy=multi-user.target
+`
+	if err := os.WriteFile("/tmp/nexus-kubectl-proxy.service", []byte(proxyUnit), 0644); err != nil {
+		return "", err
+	}
+	if _, err := RunCommand("sudo mv /tmp/nexus-kubectl-proxy.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now nexus-kubectl-proxy"); err != nil {
+		return "", err
+	}
+
+	if _, err := RunCommand("sudo k3s kubectl apply -f " + dir + "/kube-state-metrics.yaml"); err != nil {
+		return "", err
+	}
+
+	// Prometheus runs as uid 0 so the 0600 api-key stays readable without
+	// loosening its mode.
+	RunCommand(nerdctl + " rm -f nexus-prometheus")
+	RunCommand("sudo mkdir -p /var/lib/nexus-prometheus")
+	promCmd := fmt.Sprintf(`%s run -d --name nexus-prometheus --restart always --network host --user 0 --cpus 1 --memory 512m `+
+		`-v %s/prometheus.yml:/etc/prometheus/prometheus.yml:ro `+
+		`-v %s/rules.yaml:/etc/prometheus/rules.yaml:ro `+
+		`-v %s/api-key:/etc/prometheus/api-key:ro `+
+		`-v /var/lib/nexus-prometheus:/prometheus `+
+		`prom/prometheus:v2.54.1 --config.file=/etc/prometheus/prometheus.yml `+
+		`--storage.tsdb.path=/prometheus --storage.tsdb.retention.time=15d --storage.tsdb.retention.size=1GB`,
+		nerdctl, dir, dir, dir)
+	if _, err := RunCommand(promCmd); err != nil {
+		return "", err
+	}
+
+	// Grafana's image runs as uid 472, so its data directory must match.
+	RunCommand(nerdctl + " rm -f nexus-grafana")
+	RunCommand("sudo mkdir -p /var/lib/nexus-grafana && sudo chown -R 472:472 /var/lib/nexus-grafana")
+	grafanaCmd := fmt.Sprintf(`%s run -d --name nexus-grafana --restart always --network host --cpus 1 --memory 512m `+
+		`-v %s/grafana/provisioning:/etc/grafana/provisioning:ro `+
+		`-v %s/grafana/dashboards:/var/lib/grafana/dashboards:ro `+
+		`-v /var/lib/nexus-grafana:/var/lib/grafana `+
+		`-e GF_SECURITY_ADMIN_USER=admin -e GF_SECURITY_ADMIN_PASSWORD=%s `+
+		`-e GF_USERS_ALLOW_SIGN_UP=false -e GF_AUTH_ANONYMOUS_ENABLED=false `+
+		`-e GF_ANALYTICS_REPORTING_ENABLED=false -e GF_ANALYTICS_CHECK_FOR_UPDATES=false `+
+		`grafana/grafana:11.2.0`,
+		nerdctl, dir, dir, grafanaPass)
+	if _, err := RunCommand(grafanaCmd); err != nil {
+		return "", err
+	}
+
+	if _, err := RunCommand("sleep 10 && curl -sf -o /dev/null http://127.0.0.1:9090/-/ready"); err != nil {
+		return "Monitoring containers started, but Prometheus is not ready yet", nil
+	}
+
+	return fmt.Sprintf("Prometheus on :9090 and Grafana on :3000 (admin / %s)", grafanaPass), nil
+}
+
+// copyFile writes src to dst with 0644 permissions, creating no directories.
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
 // SetupNerdctlSudo grants the installing user scoped passwordless sudo for
 // nerdctl only. Non-root nerdctl ignores --address and falls back to a
 // rootless socket that doesn't exist, so without this every manual nerdctl

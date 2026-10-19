@@ -64,9 +64,70 @@ ip addr show wg0 | grep "10.8.0.1/22"
 ```
 
 ### 2.4 Verify Monitoring & Alerts
-1. Import `deploy/monitoring/grafana-dashboard.json` into Grafana.
-2. Load alert rules in Prometheus: `deploy/monitoring/alerts.yaml`.
-3. Confirm Prometheus scrapes the engine with its API key: `http://localhost:8081/metrics` requires `Authorization: Bearer <key>`, so the scrape config needs `authorization.credentials_file` pointing at a file containing the key. An unauthenticated request should return 401.
+
+The monitoring stack is installed by `deploy/setup.sh` (and by the TUI
+installer). It is host-level, in the same style as Redis and the registry:
+four pieces, no Kubernetes RBAC.
+
+| Piece | Port | Role |
+|---|---|---|
+| `nexus-kubectl-proxy` (systemd) | 127.0.0.1:8001 | Loopback bridge to the k3s API, used for pod scrapes |
+| `nexus-prometheus` (nerdctl) | 9090 | Scrapes engine, kubelet, kube-state-metrics |
+| `nexus-grafana` (nerdctl) | 3000 | Dashboards, provisioned from disk |
+| `kube-state-metrics` (pod) | — | Exposes pod labels for per-session attribution |
+
+```bash
+# All three scrape targets should read "up"
+curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+  | grep -o '"health":"up"' | wc -l   # expect: 3
+
+# Grafana login: admin / password from the file below
+sudo cat /etc/nexus/monitoring/grafana-admin.txt
+
+# The engine scrape is authenticated, so an unauthenticated call must fail
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8081/metrics   # expect: 401
+```
+
+The dashboard lives in the Grafana `Nexus` folder. It is mounted from
+`/etc/nexus/monitoring/grafana/dashboards/nexus.json`, so editing the tracked
+`deploy/monitoring/grafana-dashboard.json` and re-running the installer is how
+panels change — do not edit the dashboard in the UI, it is overwritten.
+
+**Attribution.** Pod resource series (cAdvisor) carry no identity. They are
+joined to `kube_pod_labels` on `(namespace, pod)` so every series resolves to
+`nexus-session-id`, `nexus-user-id`, and `nexus-challenge-id`:
+
+```promql
+sum by (label_nexus_user_id) (
+  container_memory_working_set_bytes{namespace="nexus-challenges",container!=""}
+  * on (namespace,pod) group_left(label_nexus_user_id) kube_pod_labels
+) / 1024 / 1024
+```
+
+If that query returns nothing while pods are running, kube-state-metrics has
+lost its label allowlist — see "Troubleshooting" below.
+
+#### Troubleshooting the monitoring stack
+
+```bash
+# Container logs
+sudo nerdctl --address /run/k3s/containerd/containerd.sock logs nexus-prometheus
+sudo nerdctl --address /run/k3s/containerd/containerd.sock logs nexus-grafana
+
+# Is the loopback bridge alive? Must print a version payload, not 000.
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/version
+
+# Pod labels exposed? Must be non-zero.
+curl -s 'http://127.0.0.1:8001/api/v1/namespaces/kube-system/services/kube-state-metrics:http/proxy/metrics' \
+  | grep -c '^kube_pod_labels'
+```
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `nexus-engine` target down, "unable to read authorization credential" | `api-key` file not readable by the container user | Prometheus must run as uid 0 (`--user 0`); do not loosen the file to 0644 |
+| `kube-state-metrics` target down, HTTP 404 | kube-state-metrics not deployed | `kubectl apply -f /etc/nexus/monitoring/kube-state-metrics.yaml` |
+| `kube_pod_labels` missing but metrics otherwise flow | label allowlist dropped from the deployment args | Must include `--metric-labels-allowlist=pods=[nexus-session-id,nexus-user-id,nexus-challenge-id]` |
+| All cluster targets down | `kubectl proxy` not running | `sudo systemctl restart nexus-kubectl-proxy` |
 
 ---
 

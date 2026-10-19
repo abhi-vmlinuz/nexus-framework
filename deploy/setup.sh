@@ -646,6 +646,34 @@ SyslogIdentifier=nexus-node-agent
 WantedBy=multi-user.target
 EOF
 
+# API key: generated once and preserved across re-installs. The CLI reads it
+# from config.json; the engine reads it from engine.env.
+# Without this, setup.sh installs an engine that accepts unauthenticated calls.
+NEXUS_ETC=/etc/nexus
+mkdir -p "$NEXUS_ETC"
+NEXUS_API_KEY=""
+if [[ -f "$NEXUS_ETC/engine.env" ]]; then
+  NEXUS_API_KEY=$(grep -m1 '^NEXUS_API_KEY=' "$NEXUS_ETC/engine.env" 2>/dev/null | cut -d= -f2- || true)
+fi
+if [[ -z "$NEXUS_API_KEY" ]]; then
+  NEXUS_API_KEY=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  ok "Generated engine API key"
+else
+  ok "Reusing existing engine API key"
+fi
+
+cat > "$NEXUS_ETC/engine.env" <<EOF
+NEXUS_MODE=${NEXUS_MODE}
+NEXUS_PORT=${NEXUS_PORT}
+NEXUS_REDIS_URL=${NEXUS_REDIS_URL}
+NEXUS_REGISTRY_URL=${NEXUS_REGISTRY_URL}
+NEXUS_NODE_AGENT_ADDR=${NEXUS_NODE_AGENT_ADDR}
+NEXUS_NODE_AGENT_INSECURE=${NEXUS_INSECURE}
+NEXUS_K3S_NAMESPACE=${NEXUS_K3S_NAMESPACE}
+NEXUS_API_KEY=${NEXUS_API_KEY}
+EOF
+chmod 600 "$NEXUS_ETC/engine.env"
+
 cat > /etc/systemd/system/nexus-engine.service <<EOF
 [Unit]
 Description=Nexus Framework Engine
@@ -657,6 +685,7 @@ Type=simple
 ExecStart=/usr/local/bin/nexus-engine
 Restart=on-failure
 RestartSec=5
+EnvironmentFile=-${NEXUS_ETC}/engine.env
 Environment=NEXUS_MODE=${NEXUS_MODE}
 Environment=NEXUS_PORT=${NEXUS_PORT}
 Environment=NEXUS_REDIS_URL=${NEXUS_REDIS_URL}
@@ -682,6 +711,157 @@ for svc in nexus-node-agent nexus-engine; do
     systemctl is-active "$svc" &>/dev/null && ok "$svc running" || warn "$svc failed — journalctl -u $svc -n 30"
   fi
 done
+
+# ─── Phase 8.5: Monitoring ─────────────────────────────────────────────────────
+banner "Phase 8.5: Monitoring (Prometheus + Grafana)"
+
+# Three moving parts, all host-level, matching how Redis and the registry run:
+#   1. kubectl proxy  — loopback bridge to the k3s API, used for pod scrapes
+#   2. Prometheus     — scrapes engine + kubelet + kube-state-metrics
+#   3. Grafana        — reads Prometheus, dashboard provisioned from disk
+# No Kubernetes RBAC, ServiceAccount, NodePort, or kubelet TLS is involved.
+
+MON_SRC="$SCRIPT_DIR/monitoring"
+MON_DIR="/etc/nexus/monitoring"
+
+if [[ ! -d "$MON_SRC" ]]; then
+  warn "deploy/monitoring not found — skipping monitoring stack"
+else
+  mkdir -p "$MON_DIR/grafana/provisioning/datasources" \
+           "$MON_DIR/grafana/provisioning/dashboards" \
+           "$MON_DIR/grafana/dashboards"
+
+  # Node name is read from the cluster rather than guessed from hostname:
+  # k3s allows the node name to be overridden, and a wrong name silently
+  # breaks the cAdvisor scrape.
+  NODE_NAME=$(k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || hostname)
+
+  install -m 644 "$MON_SRC/rules.yaml"               "$MON_DIR/rules.yaml"
+  install -m 644 "$MON_SRC/kube-state-metrics.yaml"  "$MON_DIR/kube-state-metrics.yaml"
+  install -m 644 "$MON_SRC/grafana/provisioning/datasources/prometheus.yml" \
+                 "$MON_DIR/grafana/provisioning/datasources/prometheus.yml"
+  install -m 644 "$MON_SRC/grafana/provisioning/dashboards/nexus.yml" \
+                 "$MON_DIR/grafana/provisioning/dashboards/nexus.yml"
+  install -m 644 "$MON_SRC/grafana-dashboard.json"   "$MON_DIR/grafana/dashboards/nexus.json"
+
+  sed -e "s/__NODE_NAME__/${NODE_NAME}/g" \
+      -e "s/__ENGINE_PORT__/${NEXUS_PORT}/g" \
+      "$MON_SRC/prometheus.yml" > "$MON_DIR/prometheus.yml"
+
+  # Prometheus reads the key from a file, never from its command line (which
+  # would be visible in ps).
+  printf '%s' "${NEXUS_API_KEY:-none}" > "$MON_DIR/api-key"
+  chmod 600 "$MON_DIR/api-key"
+
+  # Grafana admin password: generated once, preserved on re-install.
+  if [[ ! -s "$MON_DIR/grafana-admin.txt" ]]; then
+    head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$MON_DIR/grafana-admin.txt"
+    chmod 600 "$MON_DIR/grafana-admin.txt"
+  fi
+  GRAFANA_PASS=$(cat "$MON_DIR/grafana-admin.txt")
+
+  # ── 1. kubectl proxy ──────────────────────────────────────────────────────
+  KUBECTL_BIN=$(command -v kubectl || echo "/usr/local/bin/k3s kubectl")
+  cat > /etc/systemd/system/nexus-kubectl-proxy.service <<EOF
+[Unit]
+Description=Nexus k3s API proxy (loopback only, for Prometheus scrapes)
+After=k3s.service
+Requires=k3s.service
+
+[Service]
+Type=simple
+ExecStart=${KUBECTL_BIN} proxy --port=8001 --address=127.0.0.1 --kubeconfig=/etc/rancher/k3s/k3s.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+SyslogIdentifier=nexus-kubectl-proxy
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now nexus-kubectl-proxy.service --quiet
+  sleep 3
+  if curl -sf -o /dev/null http://127.0.0.1:8001/version; then
+    ok "kubectl proxy on 127.0.0.1:8001"
+  else
+    warn "kubectl proxy not answering — journalctl -u nexus-kubectl-proxy -n 20"
+  fi
+
+  # ── 2. kube-state-metrics ─────────────────────────────────────────────────
+  if k3s kubectl apply -f "$MON_DIR/kube-state-metrics.yaml" >/dev/null 2>&1; then
+    ok "kube-state-metrics applied (kube-system)"
+  else
+    warn "kube-state-metrics apply failed — kubectl apply -f $MON_DIR/kube-state-metrics.yaml"
+  fi
+
+  # ── 3. Prometheus ─────────────────────────────────────────────────────────
+  # --user 0 keeps the 0600 api-key file readable without loosening its mode.
+  nerdctl rm -f nexus-prometheus >/dev/null 2>&1 || true
+  mkdir -p /var/lib/nexus-prometheus
+  if nerdctl run -d \
+      --name nexus-prometheus \
+      --restart always \
+      --network host \
+      --user 0 \
+      --cpus 1 \
+      --memory 512m \
+      -v "$MON_DIR/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+      -v "$MON_DIR/rules.yaml:/etc/prometheus/rules.yaml:ro" \
+      -v "$MON_DIR/api-key:/etc/prometheus/api-key:ro" \
+      -v /var/lib/nexus-prometheus:/prometheus \
+      prom/prometheus:v2.54.1 \
+      --config.file=/etc/prometheus/prometheus.yml \
+      --storage.tsdb.path=/prometheus \
+      --storage.tsdb.retention.time=15d \
+      --storage.tsdb.retention.size=1GB >/dev/null; then
+    ok "Prometheus started (http://localhost:9090, 15d / 1GB retention)"
+  else
+    warn "Prometheus failed to start — nerdctl logs nexus-prometheus"
+  fi
+
+  # ── 4. Grafana ────────────────────────────────────────────────────────────
+  nerdctl rm -f nexus-grafana >/dev/null 2>&1 || true
+  mkdir -p /var/lib/nexus-grafana
+  chown -R 472:472 /var/lib/nexus-grafana
+  if nerdctl run -d \
+      --name nexus-grafana \
+      --restart always \
+      --network host \
+      --cpus 1 \
+      --memory 512m \
+      -v "$MON_DIR/grafana/provisioning:/etc/grafana/provisioning:ro" \
+      -v "$MON_DIR/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
+      -v /var/lib/nexus-grafana:/var/lib/grafana \
+      -e GF_SECURITY_ADMIN_USER=admin \
+      -e "GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}" \
+      -e GF_USERS_ALLOW_SIGN_UP=false \
+      -e GF_AUTH_ANONYMOUS_ENABLED=false \
+      -e GF_ANALYTICS_REPORTING_ENABLED=false \
+      -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
+      grafana/grafana:11.2.0 >/dev/null; then
+    ok "Grafana started (http://localhost:3000, dashboard: Nexus folder)"
+  else
+    warn "Grafana failed to start — nerdctl logs nexus-grafana"
+  fi
+
+  # ── 5. Verify the pipeline actually connects ──────────────────────────────
+  sleep 10
+  if curl -sf -o /dev/null http://127.0.0.1:9090/-/ready; then
+    up=$(curl -s 'http://127.0.0.1:9090/api/v1/targets?state=active' \
+         | grep -o '"health":"up"' | wc -l || true)
+    ok "Prometheus ready — ${up} scrape target(s) up"
+  else
+    warn "Prometheus not ready yet — check nerdctl logs nexus-prometheus"
+  fi
+
+  echo ""
+  echo "  Monitoring:"
+  echo "    Prometheus : http://localhost:9090"
+  echo "    Grafana    : http://localhost:3000  (admin / $(cat "$MON_DIR/grafana-admin.txt"))"
+  echo "    Password   : $MON_DIR/grafana-admin.txt"
+  echo ""
+fi
 
 # ─── Phase 9: Network Policies ──────────────────────────────────────────────────
 banner "Phase 9: Network Policies"
@@ -772,7 +952,8 @@ cat > "$CONF_FILE" <<EOF
   },
   "k8s": {
     "namespace": "${NEXUS_K3S_NAMESPACE}"
-  }
+  },
+  "api_key": "${NEXUS_API_KEY}"
 }
 EOF
 

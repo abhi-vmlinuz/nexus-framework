@@ -169,6 +169,34 @@ sudo systemctl stop nexus-engine nexus-node-agent
 
 ---
 
+## Monitoring Stack
+
+`sudo bash deploy/setup.sh` installs Prometheus and Grafana automatically. Both
+run on the host (like Redis and the registry) and need no Kubernetes setup.
+
+| Service | URL | Notes |
+|---|---|---|
+| Grafana | http://localhost:3000 | `admin` + password in `/etc/nexus/monitoring/grafana-admin.txt` |
+| Prometheus | http://localhost:9090 | Scrapes the engine, kubelet, and kube-state-metrics |
+| Engine metrics | http://localhost:8081/metrics | Requires `Authorization: Bearer <key>` |
+
+The Grafana dashboard ("Nexus" folder) shows engine KPIs plus per-user and
+per-session CPU and memory, attributed by joining pod metrics to the
+`nexus-session-id` / `nexus-user-id` / `nexus-challenge-id` pod labels.
+
+If the host is reachable from a network you do not control, restrict ports
+3000 and 9090 with the firewall — Grafana is the only piece that is not
+bound to loopback by default:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 3000 proto tcp
+sudo ufw deny 3000/tcp
+```
+
+Full operational detail, including troubleshooting, is in `docs/runbook.md`.
+
+---
+
 ## Troubleshooting
 
 ```bash

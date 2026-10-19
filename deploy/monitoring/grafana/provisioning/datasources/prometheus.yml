@@ -1,0 +1,17 @@
+# Grafana datasource provisioning.
+#
+# The uid is fixed on purpose: the shipped dashboard refers to this exact uid,
+# so the panels resolve without any manual "pick a datasource" step.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    # Grafana runs with host networking, so loopback reaches Prometheus.
+    url: http://127.0.0.1:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
