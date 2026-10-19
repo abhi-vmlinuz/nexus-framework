@@ -83,6 +83,9 @@ spec:
       serviceAccountName: kube-state-metrics
       # Only pod-level metrics and labels are needed, so no host access.
       securityContext:
+        # runAsNonRoot makes the kubelet reject the pod outright if the image
+        # ever starts as uid 0, instead of silently running as root.
+        runAsNonRoot: true
         runAsUser: 65534
         runAsGroup: 65534
         seccompProfile:
