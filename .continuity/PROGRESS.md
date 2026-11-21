@@ -4,9 +4,9 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-22: `main` is at `154fd3c`. Telemetry T1 is complete and verified on
-the test VM but sits on the unmerged branch `feat/telemetry-t1-scrape-stack`
-(`31b5104`, 3 commits, pushed, no MR yet). Nothing else is in flight.
+2026-11-22: continuity scaffolding merged to `main` (`0bf6cf6`). Telemetry T1
+is still complete and verified on the test VM but sits on the unmerged branch
+`feat/telemetry-t1-scrape-stack` (`31b5104`, 3 commits, pushed, no MR yet).
 
 ## Current task
 
@@ -24,6 +24,8 @@ the test VM but sits on the unmerged branch `feat/telemetry-t1-scrape-stack`
 - Half-finished (files touched, what's missing): the T1 branch is unmerged and
   has no MR. `setup.sh` has never been run end to end on a clean machine (VM
   sudo needs a password, so Phase 8.5 was validated by hand).
+- Also merged: `.continuity/` onboarding (PR/MR `chore/project-continuity` and
+  `chore/private-share-note`). No runtime change.
 
 ## Next up
 
