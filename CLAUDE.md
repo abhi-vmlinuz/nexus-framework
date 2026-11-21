@@ -103,3 +103,5 @@ GitLab CI (`.gitlab-ci.yml`): stages are `setup` -> `build` -> `deploy`. Builds 
 ## Version Injection
 
 Go: `-ldflags "-X main.Version=${VERSION}"` at build time. Rust: `env!("CARGO_PKG_VERSION")` from Cargo.toml.
+
+@AGENTS.md
