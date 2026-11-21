@@ -37,6 +37,20 @@ the test VM but sits on the unmerged branch `feat/telemetry-t1-scrape-stack`
 4. `nexus-role=env` label and volume support in `SpawnRequest`, so the web app
    can create AttackBox sessions with an artifact mount.
 
+## Private share (not in git)
+
+`~/nexus-private/` is one directory, mounted or symlinked on every machine so
+the path stays stable. It holds:
+
+- `plan/nexus-euphoria-event-plan.md` — the December event strategy, the nine
+  locked decisions and the P0-P3 schedule. This is the document to read before
+  touching event code.
+- `plan/nexus-telemetry-implementation.md` — the T1-T7 telemetry task tracker.
+- `db/` — the web app's schema and full dump (lives here because that repo has
+  no migrations).
+
+If the directory is missing, say so; do not reconstruct the plan from guesswork.
+
 ## Open questions / blockers
 
 - `deploy/setup.sh` renders the VPN subnet as `10.8.0.0/22`;
@@ -44,9 +58,8 @@ the test VM but sits on the unmerged branch `feat/telemetry-t1-scrape-stack`
   of truth, but a stale file that looks authoritative is a trap.
 - `ClaimNextAvailableVPNIP` allocates 1015 addresses (`10.8.0.2`–`10.8.3.254`),
   while the docs claim 1022.
-- The event plan currently lives outside this repo, at
-  `~/.opencode/plan/nexus-euphoria-event-plan.md` on one machine. It needs a
-  home in the repo or it is lost when that machine is not the one in use.
+- The event plan now lives in `~/nexus-private/plan/`, outside both repos, so
+  it survives a clone but not a machine that lacks the mount.
 - Real event host specs are unknown, so the capacity math and the 3x load test
   have no target yet.
 
