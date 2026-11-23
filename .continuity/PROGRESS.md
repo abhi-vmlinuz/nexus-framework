@@ -4,43 +4,40 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-23: engine foundations for the AttackBox sit on branch
-`feat/attackbox-engine-foundations`: the `nexus-role` pod label (`challenge` |
-`env`) and hostPath volume support in `SpawnRequest`. Build, vet and the full
-engine test suite pass. Awaiting MR. Continuity scaffolding and the
-private-share note are merged. Telemetry T1 is still unmerged
-(`feat/telemetry-t1-scrape-stack`, `31b5104`, no MR).
+2026-11-23: `main` has the AttackBox engine primitives (`87cccdb`: `nexus-role`
+label, hostPath volumes). `feat/attackbox-env-session` adds the environment-pod
+endpoint on top and is unmerged. Telemetry T1 is still unmerged on
+`feat/telemetry-t1-scrape-stack` (`31b5104`). No MRs open for either.
 
 ## Current task
 
-- Goal: land the two engine primitives the AttackBox needs, so the web app can
-  create an env session with an artefact mount.
-- In scope (files/dirs): `nexus-engine/internal/k8s/client.go`,
-  `nexus-engine/internal/api/sessions.go`, `nexus-engine/internal/k8s/client_test.go`.
-- Out of scope: env session creation without a challenge record (that is A3 and
-  needs a decision about what an AttackBox "challenge" is), the WebSocket
-  proxy, the Kali image, quotas.
-- Done when: `POST /api/v1/sessions` accepts `role`, an invalid role is a 400,
-  the pod carries `nexus-role`, and `volumes[]` produces a read-only mount.
+- Goal: an env session the web app can create: no challenge record, `nexus-role=env`,
+  configured image and TTL, optional read-only `/artifacts` mount.
+- In scope (files/dirs): `nexus-engine/internal/api/sessions.go`,
+  `nexus-engine/internal/api/routes.go`, `nexus-engine/internal/config/config.go`,
+  `nexus-engine/internal/api/env_sessions_test.go`.
+- Out of scope: the slim Kali image, the web app endpoint, egress policy,
+  quotas per role.
+- Done when: `POST /api/v1/sessions/env` spawns an env pod, rejects an
+  identifier-shaped path and a missing artefact directory, and `NEXUS_ENV_IMAGE`
+  / `NEXUS_ENV_TTL_MINUTES` / `NEXUS_ARTIFACT_ROOT` drive it.
 
 ## Last session
 
-- Done: telemetry T1 — Prometheus, Grafana, kube-state-metrics, `kubectl
-  proxy` scrape path, provisioning through `setup.sh` and the Go installer,
-  docs. Verified on the VM: all three targets up, dashboard in the `Nexus`
-  folder, attribution query returns a labelled pod. Continuity scaffolding and
-  the private-share note merged afterwards.
-- Half-finished (files touched, what's missing): the T1 branch is unmerged and
-  has no MR. `setup.sh` has never been run end to end on a clean machine (VM
-  sudo needs a password, so Phase 8.5 was validated by hand). The AttackBox
-  engine branch is unmerged and unverified against a real cluster.
-- Also merged earlier: `.continuity/` onboarding and the private-share note.
-  No runtime change.
+- Done: `POST /api/v1/sessions/env` (D-008) and artefact mounts named by ID
+  (D-009), with `NEXUS_ENV_IMAGE`, `NEXUS_ENV_TTL_MINUTES` and
+  `NEXUS_ARTIFACT_ROOT`. Build, vet and the API/k8s suites pass; 4 new tests
+  cover the rejection paths without a cluster.
+- Half-finished (files touched, what's missing): branch unmerged. Nothing has
+  been spawned against a real cluster yet — the VM is reachable (`ssh nexus-vm`)
+  but the engine there predates this branch. Telemetry T1 is still unmerged and
+  `setup.sh` has still never run end to end on a clean machine.
 
 ## Next up
 
-1. Merge `feat/attackbox-engine-foundations`, then build the backend
-   WebSocket proxy (A6) — the biggest unknown in P1.
+1. Merge `feat/attackbox-env-session`, deploy it to `nexus-vm`, then create a
+   real env pod and confirm the `nexus-role=env` label and the read-only
+   `/artifacts` mount. The web app's proxy branch is waiting on this.
 2. Open the MR for `feat/telemetry-t1-scrape-stack` and get it merged.
 3. Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges`, plus
    a global session cap. Today only `NEXUS_MAX_SESSIONS_PER_USER` exists.
@@ -48,9 +45,9 @@ private-share note are merged. Telemetry T1 is still unmerged
    handshake window instead of "peer exists"; re-ensure the peer on a cached
    config hit; release the IP when provisioning fails; pin the IP across
    `Regenerate`.
-5. Env session creation end to end: an AttackBox that has no challenge record,
-   with the slim Kali image, the `/artifacts` mount and a 60-minute TTL.
-   Blocked on deciding how `challenge_id` is satisfied for a non-challenge.
+5. Slim Kali image for env pods, then point `NEXUS_ENV_IMAGE` at it. The
+   prototype's Dockerfile is a VM rootfs, not a container image, so it needs
+   rewriting without systemd, sshd or code-server.
 
 ## Private share (not in git)
 

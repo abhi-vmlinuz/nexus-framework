@@ -72,6 +72,7 @@ func Register(r *gin.Engine, d Deps) {
 		// Session management
 		sh := newSessionHandler(d)
 		v1.POST("/sessions", sh.Create)
+		v1.POST("/sessions/env", sh.CreateEnv)
 		v1.GET("/sessions", sh.List)
 		v1.GET("/sessions/:id", sh.Get)
 		v1.DELETE("/sessions/:id", sh.Terminate)

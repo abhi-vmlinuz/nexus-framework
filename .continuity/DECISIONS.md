@@ -50,3 +50,17 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: a PVC, an initContainer that copies from the web app, or a sidecar downloader.
 - Because: one k3s node, one copy on disk, no network dependency at spawn, and a 500 MB forensic image does not get copied 200 times. A PVC needs a storage class for no benefit on a single node.
 - Revisit if: nexus goes multi-node, where hostPath stops being meaningful and this becomes object storage or a node-local PV.
+
+## D-008: Environment pods get their own endpoint, not a synthetic challenge
+- Date: 2026-11-23
+- Chose: `POST /api/v1/sessions/env` spawns an AttackBox with no challenge record.
+- Over: creating a hidden `env` challenge row and reusing `POST /api/v1/sessions`.
+- Because: the challenge store feeds the challenge list, the leaderboard and telemetry attribution. A fake row leaks into all three and has to be filtered everywhere forever. The endpoint reuses the same pod, session record, TTL, grant and telemetry path, so only the lookup is skipped.
+- Revisit if: env pods need per-college variation, where a real resource type is cleaner than a second endpoint.
+
+## D-009: Artefact mounts are named by ID and resolved inside the engine
+- Date: 2026-11-23
+- Chose: the request carries `artifact_challenge_id`; the engine joins it to `NEXUS_ARTIFACT_ROOT` (default `/var/lib/nexus/artifacts`), rejects anything that is not a plain identifier, and fails with 400 if the directory does not exist.
+- Over: accepting a host path from the caller, and over auto-creating the directory.
+- Because: a host path from the web app means a compromised or buggy caller can mount `/etc`, `/root` or a docker socket into a participant's pod. Accepting an ID keeps the trust boundary in the engine. Requiring the directory to exist turns a typo into a clear 400 instead of a pod stuck in `ContainerCreating` because hostPath type `Directory` refuses to create it.
+- Revisit if: the web app needs to mount several directories per session, where a list of IDs (not paths) is the natural extension.

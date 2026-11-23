@@ -42,6 +42,9 @@ type Config struct {
 	// Challenge holds challenge-specific default settings.
 	Challenge ChallengeConfig
 
+	// Env holds settings for environment pods — the browser AttackBox.
+	Env EnvConfig
+
 	// AllowedBuildPaths is a list of filesystem prefixes that user-supplied
 	// build paths (Dockerfile, compose) must reside under. Prevents path
 	// traversal attacks (e.g. /etc/shadow). Set via NEXUS_ALLOWED_BUILD_PATHS.
@@ -53,6 +56,24 @@ type Config struct {
 	// APIKey is the shared secret for authenticating API requests.
 	// When empty, authentication is disabled (dev mode).
 	APIKey string
+}
+
+// EnvConfig holds settings for environment pods: the browser AttackBox a
+// participant works in, as opposed to a challenge they attack.
+type EnvConfig struct {
+	// Image is the container image for an environment pod.
+	// Set via NEXUS_ENV_IMAGE.
+	Image string
+
+	// TTLMinutes is how long an environment pod lives.
+	// Set via NEXUS_ENV_TTL_MINUTES.
+	TTLMinutes int
+
+	// ArtifactRoot is the host directory holding per-challenge artefact
+	// directories. A request may only mount a subdirectory of this root, so a
+	// compromised caller cannot mount /etc into a pod.
+	// Set via NEXUS_ARTIFACT_ROOT.
+	ArtifactRoot string
 }
 
 // WireGuardConfig holds WireGuard server settings used when generating peer configs.
@@ -172,6 +193,9 @@ func (c *Config) SaveToFile(path string) error {
 	fmt.Fprintf(f, "NEXUS_DEFAULT_SESSION_TTL_MINUTES=%d\n", c.Session.DefaultTTLMinutes)
 	fmt.Fprintf(f, "NEXUS_MAX_SESSIONS_PER_USER=%d\n", c.Session.MaxPerUser)
 	fmt.Fprintf(f, "NEXUS_MAX_WORKERS=%d\n", c.Reconciler.MaxWorkers)
+	fmt.Fprintf(f, "NEXUS_ENV_IMAGE=%s\n", c.Env.Image)
+	fmt.Fprintf(f, "NEXUS_ENV_TTL_MINUTES=%d\n", c.Env.TTLMinutes)
+	fmt.Fprintf(f, "NEXUS_ARTIFACT_ROOT=%s\n", c.Env.ArtifactRoot)
 
 	return nil
 }
@@ -200,6 +224,11 @@ func Load() (*Config, error) {
 	defaultTTL, err := parseInt("NEXUS_DEFAULT_SESSION_TTL_MINUTES", 60)
 	if err != nil {
 		return nil, fmt.Errorf("NEXUS_DEFAULT_SESSION_TTL_MINUTES: %w", err)
+	}
+
+	envTTL, err := parseInt("NEXUS_ENV_TTL_MINUTES", 60)
+	if err != nil {
+		return nil, fmt.Errorf("NEXUS_ENV_TTL_MINUTES: %w", err)
 	}
 
 	maxPerUser, err := parseInt("NEXUS_MAX_SESSIONS_PER_USER", 0)
@@ -244,6 +273,11 @@ func Load() (*Config, error) {
 			DefaultTTLMinutes: defaultTTL,
 			MaxPerUser:        maxPerUser,
 		},
+		Env: EnvConfig{
+			Image:        getenv("NEXUS_ENV_IMAGE", "nexus-kali-slim:latest"),
+			TTLMinutes:   envTTL,
+			ArtifactRoot: getenv("NEXUS_ARTIFACT_ROOT", "/var/lib/nexus/artifacts"),
+		},
 		Challenge: ChallengeConfig{
 			DefaultCPULimit:    getenv("NEXUS_DEFAULT_CPU_LIMIT", "0.5"),
 			DefaultMemoryLimit: getenv("NEXUS_DEFAULT_MEMORY_LIMIT", "256Mi"),
@@ -282,6 +316,27 @@ func (c *Config) GetDefaultTTLMinutes() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.Session.DefaultTTLMinutes
+}
+
+func (c *Config) GetEnvImage() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Env.Image
+}
+
+func (c *Config) GetEnvTTLMinutes() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.Env.TTLMinutes <= 0 {
+		return 60
+	}
+	return c.Env.TTLMinutes
+}
+
+func (c *Config) GetArtifactRoot() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Env.ArtifactRoot
 }
 
 func (c *Config) GetMaxPerUser() int {
