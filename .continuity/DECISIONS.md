@@ -86,3 +86,10 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: deriving role from the pod label via the node agent on every read, and keeping a side channel that cannot go stale.
 - Because: the web app (D-022) needs to know whether a session is a BrowserAttackBox before deciding anything about it, including during a control plane restart where the pod label is the only other place the role lives.
 - Revisit if: someone proves the label lookup is cheap enough for their scale; then they can drop the field.
+
+## D-024: Env pods get a keep-alive
+- Date: 2026-11-23
+- Chose: `SpawnRequest.KeepAlive` adds `Command: ["sleep", "infinity"]` to the pod's single container; set for env pods only.
+- Over: making challenge pods persist, or relying on images to stay alive.
+- Because: an env pod's purpose is to hold a terminal open. Images do not, in general (`alpine:3.19` exits, phase becomes Succeeded, and kubelet's exec refuses: "cannot exec into a container in a completed pod"). The fix is in `k8s/client.go` + `api/sessions.go`.
+- Revisit if: someone wants env pods to be image-command-driven, e.g. a custom AttackBox image that starts sshd itself.
