@@ -115,6 +115,10 @@ type SpawnRequest struct {
 	ImagePullSecrets []string
 	// Role is "challenge" or "env". Empty means "challenge".
 	Role string
+	// KeepAlive, when true, adds a keep-alive command to the pod so it does not
+	// exit as soon as its image entrypoint returns. Env pods need it: their
+	// whole job is to hold a terminal open, and a pod that exits can't exec.
+	KeepAlive bool
 	// Volumes are mounted into every container in the pod. Single-node only:
 	// nexus runs one k3s node by design, so hostPath is the whole story.
 	Volumes []VolumeMount
@@ -410,6 +414,9 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 			Ports:           ports,
 			ImagePullPolicy: corev1.PullIfNotPresent,
 		}}
+		if req.KeepAlive {
+			podContainers[0].Command = []string{"sleep", "infinity"}
+		}
 
 		// Add Resource Limits
 		if req.Resources != nil {

@@ -347,6 +347,7 @@ func (h *sessionHandler) CreateEnv(c *gin.Context) {
 		TTLMinutes: ttl,
 		Role:       k8s.RoleEnv,
 		Image:      image,
+		KeepAlive:  true,
 		Resources: &k8s.Resources{
 			CPU:    h.d.Cfg.GetDefaultCPULimit(),
 			Memory: h.d.Cfg.GetDefaultMemoryLimit(),
