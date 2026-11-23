@@ -71,3 +71,11 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: giving every pod internet and discovering the attacker does not need it.
 - Because: the AttackBox is a browser running arbitrary user commands and it must have internet to be useful — admin, piping tools, package installs, whatever is normal work. A challenge, by contrast, runs the code an attacker is invited to run, so internet access is the privilege the person who wrote the challenge has to ask for, not something to default to. NetworkPolicies are additive, so the env policy only widens the env pods.
 - Revisit if: user feedback says people cannot do their work with a browser, at which point reconsider default-deny.
+
+## D-022: Web-app mode relays the terminal through a second engine
+- Date: 2026-11-23
+- Chose: the engine, when `NEXUS_WS_PROXY_ADDR` is set, proxies `/api/v1/sessions/{id}/terminal` to another engine's terminal endpoint and injects that engine's API key itself.
+- Over: a kubelet `pods/exec` or SPDY proxy (that's what `ExecStream` needs, and it bypasses the whole "who is the caller" question), or shipping the key to the browser.
+- Because: a real PTY through `kubectl exec` needs the kube-apiserver creds on the connecting pod, and exec has no caller scoping beyond the user's own pod anyway — so by the time a second engine has the same API key, the marginal win is the engine-to-engine link being controllable. The relay still gives a browser something to *see* (errors, echo, compile output) and a place to put the auth check and the ownership check, which the raw stream had neither.
+- Revisit if: someone builds the kubelet exec backend — it's better because it works without a second engine.
+- Not the answer to the connect test: no need for `VITE_NEXUS_URL` or any node-agent change.
