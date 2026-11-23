@@ -75,6 +75,19 @@ If the directory is missing, say so; do not reconstruct the plan from guesswork.
 - Real event host specs are unknown, so the capacity math and the 3x load test
   have no target yet.
 
+## Noted, unresolved on the VM
+
+- `nexus-vm` git repo is at branch `feat/terminal-exec-gateway`
+  (`a3a30a8 feat(engine): add interactive terminal PTY websocket and $HOME file
+  sync endpoints`), detached or behind `main`; use it as the file-transfer
+  baseline and note the drift when upgrading.
+- The k3s admin kubeconfig the backlog mentions is not present on
+  `nexus-vm`; `kubectl` there talks to a permissive default policy
+  (`{"securityContext":{"namespace": "any"}}`) rather than the restricted
+  ones. Something removed the policy file (probably the repo's own `setup.sh`
+  from before this repo). For the connect test, create the env pod, apply
+  `deploy/network-policy-prod.yaml`, then connect.
+
 ## Noticed, not touched
 
 - `nexus-engine/internal/api/terminal.go` checks that a session exists but not
