@@ -26,6 +26,9 @@ type CreateSessionRequest struct {
 	// VpnIP is the WireGuard-assigned IP for this user.
 	// Required in prod mode for EnsureUserIsolation; ignored in dev mode.
 	VpnIP string `json:"vpn_ip,omitempty"`
+	// Role distinguishes an environment a participant works in from a target
+	// they attack. Empty means "challenge".
+	Role string `json:"role,omitempty"`
 }
 
 // Create spawns a new challenge pod and returns the pod IP.
@@ -50,6 +53,17 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error":   "CHALLENGE_NOT_FOUND",
 			"message": fmt.Sprintf("challenge %q does not exist", req.ChallengeID),
+		})
+		return
+	}
+
+	// Validate role before anything is created, so a typo is a 400 and not a
+	// pod that the quota and policy selectors cannot classify.
+	role, err := k8s.NormalizeRole(req.Role)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "INVALID_ROLE",
+			"message": err.Error(),
 		})
 		return
 	}
@@ -86,6 +100,7 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		ChallengeID: req.ChallengeID,
 		UserID:      req.UserID,
 		TTLMinutes:  ch.TTLMinutes,
+		Role:        role,
 	}
 	if h.d.Cfg.Registry.AuthType != "none" {
 		spawnReq.ImagePullSecrets = []string{"nexus-pull-secret"}

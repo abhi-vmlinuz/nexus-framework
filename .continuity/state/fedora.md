@@ -1,10 +1,16 @@
 # Auto state (machine-written; do not edit)
 - host: fedora
-- time: 2026-11-21T18:54:15Z
-- branch: chore/refresh-progress
+- time: 2026-11-23T07:12:54Z
+- branch: feat/attackbox-engine-foundations
 - head: 0bf6cf6 Merge branch 'chore/private-share-note' into 'main'
 ## Changed files (staged or unstaged)
+M  .continuity/DECISIONS.md
 M  .continuity/PROGRESS.md
+A  .continuity/sessions/2026-11-23-0730.md
+ M .gitignore
+M  nexus-engine/internal/api/sessions.go
+M  nexus-engine/internal/k8s/client.go
+A  nexus-engine/internal/k8s/client_test.go
 ?? analysis.zip
 ?? docs/nexus-telemetry-plan.md
 ?? docs/nexus-telemetry-plan.tex
