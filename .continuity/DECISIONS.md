@@ -36,3 +36,17 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: treating "the peer appears in the WireGuard dump" as connected, which is what the engine does now.
 - Because: a peer that exists but never handshakes is precisely the failure participants report, and hiding it turns a diagnosable problem into a support queue.
 - Revisit if: the handshake window proves too tight for real client sleep/wake behaviour.
+
+## D-006: Environment pods are ordinary sessions with a `nexus-role` label
+- Date: 2026-11-23
+- Chose: the browser AttackBox becomes a normal nexus session whose pod carries `nexus-role=env`; pods keep `app=nexus-challenge` so the existing selectors, TTL and cleanup keep working.
+- Over: a separate namespace, a separate resource type, or a second orchestrator.
+- Because: everything downstream (quota, NetworkPolicy, telemetry, TTL, terminal) already selects on `app=nexus-challenge`. One extra label distinguishes "something you attack" from "somewhere you work" without forking the session model.
+- Revisit if: env pods need a different quota or lifecycle than challenge pods, at which point a namespace is cleaner than a label.
+
+## D-007: Artefact volumes are read-only hostPaths
+- Date: 2026-11-23
+- Chose: `SpawnRequest.Volumes` mounts host directories into every pod container, read-only by default (`ReadWrite` is opt-in, so the zero value is safe), with absolute-path validation and `HostPathDirectory` so a missing directory fails the pod instead of silently creating one.
+- Over: a PVC, an initContainer that copies from the web app, or a sidecar downloader.
+- Because: one k3s node, one copy on disk, no network dependency at spawn, and a 500 MB forensic image does not get copied 200 times. A PVC needs a storage class for no benefit on a single node.
+- Revisit if: nexus goes multi-node, where hostPath stops being meaningful and this becomes object storage or a node-local PV.

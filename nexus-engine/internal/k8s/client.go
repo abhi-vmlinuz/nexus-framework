@@ -33,10 +33,32 @@ const (
 	labelSessionID = "nexus-session-id"
 	labelChallengeID = "nexus-challenge-id"
 	labelUserID    = "nexus-user-id"
+	labelRole      = "nexus-role"
 	annotationTTL  = "nexus.io/ttl"
 	annotationCreatedAt = "nexus.io/created-at"
 	podNamePrefix  = "chal-"
 )
+
+// Pod roles. A challenge pod is something participants attack; an env pod is
+// something they work in (the browser AttackBox). Both are nexus sessions, so
+// they share `app=nexus-challenge` and differ only by this label.
+const (
+	RoleChallenge = "challenge"
+	RoleEnv       = "env"
+)
+
+// NormalizeRole maps an empty role to RoleChallenge and rejects anything else,
+// so an unlabelled caller keeps the pre-AttackBox behaviour.
+func NormalizeRole(role string) (string, error) {
+	switch role {
+	case "":
+		return RoleChallenge, nil
+	case RoleChallenge, RoleEnv:
+		return role, nil
+	default:
+		return "", fmt.Errorf("invalid role %q: want %q or %q", role, RoleChallenge, RoleEnv)
+	}
+}
 
 // ContainerSpec mirrors state.ContainerSpec — copied to avoid import cycle.
 type ContainerSpec struct {
@@ -91,6 +113,69 @@ type SpawnRequest struct {
 	ReadinessProbe *ReadinessProbe
 	TTLMinutes     int
 	ImagePullSecrets []string
+	// Role is "challenge" or "env". Empty means "challenge".
+	Role string
+	// Volumes are mounted into every container in the pod. Single-node only:
+	// nexus runs one k3s node by design, so hostPath is the whole story.
+	Volumes []VolumeMount
+}
+
+// VolumeMount attaches a host directory to every container in a pod.
+type VolumeMount struct {
+	// Name is the k8s volume name. Derived from the index when empty.
+	Name string
+	// HostPath is an absolute directory on the node. Required.
+	HostPath string
+	// MountPath is where it appears inside the container. Required.
+	MountPath string
+	// ReadWrite is deliberately inverted so the zero value is read-only,
+	// which is the safe default for artefact directories.
+	ReadWrite bool
+}
+
+const hostPathVolumePrefix = "vol-"
+
+// buildPodVolumes turns the request's mounts into pod volumes and the
+// container-side mounts that reference them. It rejects relative paths and
+// empty fields rather than letting k8s accept a pod that will never start.
+func buildPodVolumes(mounts []VolumeMount) ([]corev1.Volume, []corev1.VolumeMount, error) {
+	if len(mounts) == 0 {
+		return nil, nil, nil
+	}
+	hostPathType := corev1.HostPathDirectory
+	volumes := make([]corev1.Volume, 0, len(mounts))
+	containerMounts := make([]corev1.VolumeMount, 0, len(mounts))
+
+	for i, m := range mounts {
+		if m.HostPath == "" || m.MountPath == "" {
+			return nil, nil, fmt.Errorf("volume %d: host_path and mount_path are required", i)
+		}
+		hostPath := filepath.Clean(m.HostPath)
+		mountPath := filepath.Clean(m.MountPath)
+		if !filepath.IsAbs(hostPath) {
+			return nil, nil, fmt.Errorf("volume %d: host_path %q must be absolute", i, m.HostPath)
+		}
+		if !filepath.IsAbs(mountPath) {
+			return nil, nil, fmt.Errorf("volume %d: mount_path %q must be absolute", i, m.MountPath)
+		}
+
+		name := m.Name
+		if name == "" {
+			name = fmt.Sprintf("%s%d", hostPathVolumePrefix, i)
+		}
+		volumes = append(volumes, corev1.Volume{
+			Name: name,
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: hostPath, Type: &hostPathType},
+			},
+		})
+		containerMounts = append(containerMounts, corev1.VolumeMount{
+			Name:      name,
+			MountPath: mountPath,
+			ReadOnly:  !m.ReadWrite,
+		})
+	}
+	return volumes, containerMounts, nil
 }
 
 // PodInfo is returned after successful pod creation.
@@ -106,6 +191,7 @@ type ResourceInfo struct {
 	Name      string `json:"name"`
 	Status    string `json:"status"`
 	PodIP     string `json:"pod_ip,omitempty"`
+	Role      string `json:"role,omitempty"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -173,6 +259,15 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 	ctx, cancel := k8sCtx()
 	defer cancel()
 	podName := podNamePrefix + req.SessionID
+
+	role, err := NormalizeRole(req.Role)
+	if err != nil {
+		return nil, err
+	}
+	podVolumes, containerMounts, err := buildPodVolumes(req.Volumes)
+	if err != nil {
+		return nil, err
+	}
 
 	var podContainers []corev1.Container
 
@@ -329,6 +424,7 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 				labelSessionID:   req.SessionID,
 				labelChallengeID: req.ChallengeID,
 				labelUserID:      req.UserID,
+				labelRole:        role,
 			},
 			Annotations: map[string]string{
 				annotationTTL:       fmt.Sprintf("%dm", req.TTLMinutes),
@@ -338,7 +434,17 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 		Spec: corev1.PodSpec{
 			RestartPolicy: corev1.RestartPolicyNever,
 			Containers:    podContainers,
+			Volumes:       podVolumes,
 		},
+	}
+
+	// Mount volumes into every container, including multi-container challenges.
+	if len(containerMounts) > 0 {
+		for i := range pod.Spec.Containers {
+			pod.Spec.Containers[i].VolumeMounts = append(
+				pod.Spec.Containers[i].VolumeMounts, containerMounts...,
+			)
+		}
 	}
 
 	if len(req.ImagePullSecrets) > 0 {
@@ -431,6 +537,7 @@ func (c *Client) ListPods() ([]ResourceInfo, error) {
 			Name:      p.Name,
 			Status:    string(p.Status.Phase),
 			PodIP:     p.Status.PodIP,
+			Role:      p.Labels[labelRole],
 			CreatedAt: p.CreationTimestamp.UTC().Format(time.RFC3339),
 		})
 	}

@@ -4,40 +4,53 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-22: continuity scaffolding merged to `main` (`0bf6cf6`). Telemetry T1
-is still complete and verified on the test VM but sits on the unmerged branch
-`feat/telemetry-t1-scrape-stack` (`31b5104`, 3 commits, pushed, no MR yet).
+2026-11-23: engine foundations for the AttackBox sit on branch
+`feat/attackbox-engine-foundations`: the `nexus-role` pod label (`challenge` |
+`env`) and hostPath volume support in `SpawnRequest`. Build, vet and the full
+engine test suite pass. Awaiting MR. Continuity scaffolding and the
+private-share note are merged. Telemetry T1 is still unmerged
+(`feat/telemetry-t1-scrape-stack`, `31b5104`, no MR).
 
 ## Current task
 
-- Goal: none open. Next body of work is December event hardening.
-- In scope (files/dirs): —
-- Out of scope: —
-- Done when: —
+- Goal: land the two engine primitives the AttackBox needs, so the web app can
+  create an env session with an artefact mount.
+- In scope (files/dirs): `nexus-engine/internal/k8s/client.go`,
+  `nexus-engine/internal/api/sessions.go`, `nexus-engine/internal/k8s/client_test.go`.
+- Out of scope: env session creation without a challenge record (that is A3 and
+  needs a decision about what an AttackBox "challenge" is), the WebSocket
+  proxy, the Kali image, quotas.
+- Done when: `POST /api/v1/sessions` accepts `role`, an invalid role is a 400,
+  the pod carries `nexus-role`, and `volumes[]` produces a read-only mount.
 
 ## Last session
 
 - Done: telemetry T1 — Prometheus, Grafana, kube-state-metrics, `kubectl
   proxy` scrape path, provisioning through `setup.sh` and the Go installer,
   docs. Verified on the VM: all three targets up, dashboard in the `Nexus`
-  folder, attribution query returns a labelled pod.
+  folder, attribution query returns a labelled pod. Continuity scaffolding and
+  the private-share note merged afterwards.
 - Half-finished (files touched, what's missing): the T1 branch is unmerged and
   has no MR. `setup.sh` has never been run end to end on a clean machine (VM
-  sudo needs a password, so Phase 8.5 was validated by hand).
-- Also merged: `.continuity/` onboarding (PR/MR `chore/project-continuity` and
-  `chore/private-share-note`). No runtime change.
+  sudo needs a password, so Phase 8.5 was validated by hand). The AttackBox
+  engine branch is unmerged and unverified against a real cluster.
+- Also merged earlier: `.continuity/` onboarding and the private-share note.
+  No runtime change.
 
 ## Next up
 
-1. Open the MR for `feat/telemetry-t1-scrape-stack` and get it merged.
-2. Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges`, plus
+1. Merge `feat/attackbox-engine-foundations`, then build the backend
+   WebSocket proxy (A6) — the biggest unknown in P1.
+2. Open the MR for `feat/telemetry-t1-scrape-stack` and get it merged.
+3. Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges`, plus
    a global session cap. Today only `NEXUS_MAX_SESSIONS_PER_USER` exists.
-3. VPN correctness: `VpnStatus.connected` should use the node agent's 180s
+4. VPN correctness: `VpnStatus.connected` should use the node agent's 180s
    handshake window instead of "peer exists"; re-ensure the peer on a cached
    config hit; release the IP when provisioning fails; pin the IP across
    `Regenerate`.
-4. `nexus-role=env` label and volume support in `SpawnRequest`, so the web app
-   can create AttackBox sessions with an artifact mount.
+5. Env session creation end to end: an AttackBox that has no challenge record,
+   with the slim Kali image, the `/artifacts` mount and a 60-minute TTL.
+   Blocked on deciding how `challenge_id` is satisfied for a non-challenge.
 
 ## Private share (not in git)
 
