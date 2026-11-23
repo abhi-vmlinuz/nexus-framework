@@ -71,9 +71,9 @@ func TestBuildPodVolumesReadWrite(t *testing.T) {
 
 func TestBuildPodVolumesRejectsBadInput(t *testing.T) {
 	cases := map[string]VolumeMount{
-		"missing host path":  {MountPath: "/artifacts"},
-		"missing mount path": {HostPath: "/var/lib/nexus/artifacts"},
-		"relative host path": {HostPath: "artifacts", MountPath: "/artifacts"},
+		"missing host path":   {MountPath: "/artifacts"},
+		"missing mount path":  {HostPath: "/var/lib/nexus/artifacts"},
+		"relative host path":  {HostPath: "artifacts", MountPath: "/artifacts"},
 		"relative mount path": {HostPath: "/var/lib/nexus/artifacts", MountPath: "artifacts"},
 	}
 	for name, m := range cases {

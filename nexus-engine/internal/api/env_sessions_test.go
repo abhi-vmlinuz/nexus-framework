@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/api"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
+	"github.com/gin-gonic/gin"
 )
 
 // envTestConfig points the artefact root at a temp directory so the handler can

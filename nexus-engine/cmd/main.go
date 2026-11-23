@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/api"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/controller"
@@ -20,6 +19,7 @@ import (
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -95,6 +95,14 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(jsonLogger())
 
+	// Web-app mode: when NEXUS_WS_PROXY_ADDR is set, the terminal endpoint
+	// proxies to that engine and injects its API key instead of running a
+	// local PTY.
+	var backend api.WSBackend
+	if cfg.WSProxyAddr != "" {
+		backend = api.WSBackend{Client: k8s.NewEngineWSSessionClient(cfg.WSProxyAddr, cfg.APIKey)}
+	}
+
 	api.Register(r, api.Deps{
 		Store:      store,
 		K8s:        k8sClient,
@@ -103,6 +111,7 @@ func main() {
 		Controller: ctrl,
 		Cfg:        cfg,
 		Telemetry:  tel,
+		Backend:    backend,
 	})
 
 	srv := &http.Server{

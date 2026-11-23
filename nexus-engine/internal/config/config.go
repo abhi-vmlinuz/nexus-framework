@@ -56,6 +56,12 @@ type Config struct {
 	// APIKey is the shared secret for authenticating API requests.
 	// When empty, authentication is disabled (dev mode).
 	APIKey string
+
+	// WSProxyAddr, when set, turns the engine into web-app mode: the session
+	// terminal endpoint proxies to another engine at this address (e.g.
+	// wss://nexus.example.com or ws://127.0.0.1:8082).
+	// Set via NEXUS_WS_PROXY_ADDR.
+	WSProxyAddr string
 }
 
 // EnvConfig holds settings for environment pods: the browser AttackBox a
@@ -245,6 +251,7 @@ func Load() (*Config, error) {
 		Mode:         mode,
 		Port:         getenv("NEXUS_PORT", "8081"),
 		APIKey:       os.Getenv("NEXUS_API_KEY"),
+		WSProxyAddr:  getenv("NEXUS_WS_PROXY_ADDR", ""),
 		RedisURL:     getenv("NEXUS_REDIS_URL", "redis://localhost:6379"),
 		K3sNamespace: getenv("NEXUS_K3S_NAMESPACE", "nexus-challenges"),
 		Registry: RegistryConfig{
@@ -337,6 +344,12 @@ func (c *Config) GetArtifactRoot() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.Env.ArtifactRoot
+}
+
+func (c *Config) GetWSProxyAddr() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.WSProxyAddr
 }
 
 func (c *Config) GetMaxPerUser() int {

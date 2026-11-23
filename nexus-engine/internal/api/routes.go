@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/config"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/controller"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
@@ -13,6 +12,7 @@ import (
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/registry"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 )
 
@@ -25,6 +25,9 @@ type Deps struct {
 	Controller *controller.Controller
 	Cfg        *config.Config
 	Telemetry  *telemetry.Logger // may be nil; events skipped then
+	// Backend is the web-app mode of the session terminal, active when
+	// Cfg.GetWSProxyAddr() is set. Zero value = direct PTY mode.
+	Backend WSBackend
 }
 
 // Register wires all HTTP routes onto the gin engine.
