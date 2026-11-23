@@ -59,3 +59,31 @@ spec:
   policyTypes:
     - Ingress
     - Egress
+
+---
+# AttackBox pods (nexus-role=env) get internet by default, challenge pods do
+# not. NetworkPolicies are additive, so this only widens the env pods — the
+# prod policy above stays default-deny for anything without the label.
+#
+# Applied from the same file, before or after nexus-prod-isolate, with:
+#   k3s kubectl apply -f deploy/network-policy-prod.yaml
+#
+# Blocking on someone to own a "browser needs outbound internet" rule for
+# event mode, and on permission-granting: today only the space of "give
+# everyone internet" exists, not "grant this one challenge internet".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nexus-env-internet
+  namespace: nexus-challenges
+  labels:
+    managed-by: nexus
+spec:
+  podSelector:
+    matchLabels:
+      app: nexus-challenge
+      nexus-role: env
+  egress:
+    - {}
+  policyTypes:
+    - Egress

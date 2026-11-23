@@ -64,3 +64,10 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: accepting a host path from the caller, and over auto-creating the directory.
 - Because: a host path from the web app means a compromised or buggy caller can mount `/etc`, `/root` or a docker socket into a participant's pod. Accepting an ID keeps the trust boundary in the engine. Requiring the directory to exist turns a typo into a clear 400 instead of a pod stuck in `ContainerCreating` because hostPath type `Directory` refuses to create it.
 - Revisit if: the web app needs to mount several directories per session, where a list of IDs (not paths) is the natural extension.
+
+## D-010: Env pods get internet, challenge pods do not, by default
+- Date: 2026-11-23
+- Chose: a second NetworkPolicy in `deploy/network-policy-prod.yaml` selecting `nexus-role=env` with permissive egress, while the main prod policy is default-deny for everything.
+- Over: giving every pod internet and discovering the attacker does not need it.
+- Because: the AttackBox is a browser running arbitrary user commands and it must have internet to be useful — admin, piping tools, package installs, whatever is normal work. A challenge, by contrast, runs the code an attacker is invited to run, so internet access is the privilege the person who wrote the challenge has to ask for, not something to default to. NetworkPolicies are additive, so the env policy only widens the env pods.
+- Revisit if: user feedback says people cannot do their work with a browser, at which point reconsider default-deny.
