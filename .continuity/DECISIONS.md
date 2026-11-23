@@ -79,3 +79,10 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Because: a real PTY through `kubectl exec` needs the kube-apiserver creds on the connecting pod, and exec has no caller scoping beyond the user's own pod anyway — so by the time a second engine has the same API key, the marginal win is the engine-to-engine link being controllable. The relay still gives a browser something to *see* (errors, echo, compile output) and a place to put the auth check and the ownership check, which the raw stream had neither.
 - Revisit if: someone builds the kubelet exec backend — it's better because it works without a second engine.
 - Not the answer to the connect test: no need for `VITE_NEXUS_URL` or any node-agent change.
+
+## D-023: Sessions carry their role
+- Date: 2026-11-23
+- Chose: `state.Session` has a `role` field ("challenge"|"env"), written by both creators and returned by `List`/`Get`.
+- Over: deriving role from the pod label via the node agent on every read, and keeping a side channel that cannot go stale.
+- Because: the web app (D-022) needs to know whether a session is a BrowserAttackBox before deciding anything about it, including during a control plane restart where the pod label is the only other place the role lives.
+- Revisit if: someone proves the label lookup is cheap enough for their scale; then they can drop the field.

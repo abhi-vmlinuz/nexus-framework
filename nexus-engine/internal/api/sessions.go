@@ -376,6 +376,7 @@ func (h *sessionHandler) CreateEnv(c *gin.Context) {
 	sess := state.Session{
 		ID:        sessionID,
 		UserID:    req.UserID,
+		Role:      k8s.RoleEnv,
 		PodName:   podInfo.PodName,
 		PodIP:     podInfo.PodIP,
 		Status:    "running",
