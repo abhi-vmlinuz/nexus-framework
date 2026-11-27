@@ -4,50 +4,43 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-23: `main` has the AttackBox engine primitives (`87cccdb`: `nexus-role`
-label, hostPath volumes). `feat/attackbox-env-session` adds the environment-pod
-endpoint on top and is unmerged. Telemetry T1 is still unmerged on
-`feat/telemetry-t1-scrape-stack` (`31b5104`). No MRs open for either.
+2026-11-27: `main` has the AttackBox engine primitives (`87cccdb`: `nexus-role`
+label, hostPath volumes). Branch `feat/attackbox-env-session` (`61acc34`, **MR !8
+open** on GitLab, unmerged) adds:
+- `POST /api/v1/sessions/env` + `/artifacts` read-only hostPath mounts by ID (D-008, D-009)
+- `deploy/network-policy-prod.yaml` `/22` ingress, default-deny challenge egress, and `nexus-env-internet` (D-010)
+- Web-app WS proxy mode (`NEXUS_WS_PROXY_ADDR`, D-022)
+- Session `Role` (`"challenge"|"env"`) on `state.Session` (D-023)
+- `sleep infinity` keep-alive for env pods (D-024)
+
+Live `nexus-vm` connect test ran on scratch engine (`:8082`/`:8084`, `mode=dev`):
+env pod spawned with `nexus-role=env` and `sleep infinity`, and WS terminal shell
+echo succeeded. Full browser AttackBox test is still pending.
+Telemetry T1 remains unmerged on `feat/telemetry-t1-scrape-stack` (`31b5104`, no MR yet).
 
 ## Current task
 
-- Goal: an env session the web app can create: no challenge record, `nexus-role=env`,
-  configured image and TTL, optional read-only `/artifacts` mount.
-- In scope (files/dirs): `nexus-engine/internal/api/sessions.go`,
-  `nexus-engine/internal/api/routes.go`, `nexus-engine/internal/config/config.go`,
-  `nexus-engine/internal/api/env_sessions_test.go`.
-- Out of scope: the slim Kali image, the web app endpoint, egress policy,
-  quotas per role.
-- Done when: `POST /api/v1/sessions/env` spawns an env pod, rejects an
-  identifier-shaped path and a missing artefact directory, and `NEXUS_ENV_IMAGE`
-  / `NEXUS_ENV_TTL_MINUTES` / `NEXUS_ARTIFACT_ROOT` drive it.
+- Goal: sync continuity state across `nexus-framework` and `rlabz-ctf`, then align on the next December P0/AttackBox milestone.
+- In scope (files/dirs): `.continuity/PROGRESS.md`, `.gitignore` (local `plans*` sync).
+- Out of scope: feature edits until plan/agenda is confirmed with user.
+- Done when: `PROGRESS.md` matches `HEAD` (`61acc34`) and MR `!8` state, and `go test ./...` passes.
 
 ## Last session
 
-- Done: `POST /api/v1/sessions/env` (D-008) and artefact mounts named by ID
-  (D-009), with `NEXUS_ENV_IMAGE`, `NEXUS_ENV_TTL_MINUTES` and
-  `NEXUS_ARTIFACT_ROOT`. Build, vet and the API/k8s suites pass; 4 new tests
-  cover the rejection paths without a cluster.
-- Half-finished (files touched, what's missing): branch unmerged. Nothing has
-  been spawned against a real cluster yet — the VM is reachable (`ssh nexus-vm`)
-  but the engine there predates this branch. Telemetry T1 is still unmerged and
-  `setup.sh` has still never run end to end on a clean machine.
+- Verified repo vs. `PROGRESS.md`: `go test ./...` passes for `internal/api`,
+  `internal/k8s`, `internal/state` (`cmd`, `config`, `controller`, `nodeagent`,
+  `registry`, `telemetry` have no test files).
+- Synced `PROGRESS.md` with commits `85cbf9b`–`61acc34` and open GitLab MR `!8`.
+- Untracked local files left untouched: `analysis.zip`, `docs/nexus-telemetry-plan.md`, `docs/nexus-telemetry-plan.tex`.
 
 ## Next up
 
-1. Merge `feat/attackbox-env-session`, deploy it to `nexus-vm`, then create a
-   real env pod and confirm the `nexus-role=env` label and the read-only
-   `/artifacts` mount. The web app's proxy branch is waiting on this.
-2. Open the MR for `feat/telemetry-t1-scrape-stack` and get it merged.
-3. Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges`, plus
-   a global session cap. Today only `NEXUS_MAX_SESSIONS_PER_USER` exists.
-4. VPN correctness: `VpnStatus.connected` should use the node agent's 180s
-   handshake window instead of "peer exists"; re-ensure the peer on a cached
-   config hit; release the IP when provisioning fails; pin the IP across
-   `Regenerate`.
-5. Slim Kali image for env pods, then point `NEXUS_ENV_IMAGE` at it. The
-   prototype's Dockerfile is a VM rootfs, not a container image, so it needs
-   rewriting without systemd, sshd or code-server.
+1. Finish browser-level AttackBox smoke test against `rlabz-ctf` (`fix/attackbox-terminal-proxy`) and merge **MR !8** (`feat/attackbox-env-session` → `main`).
+2. Open and merge MR for `feat/telemetry-t1-scrape-stack` (`31b5104`).
+3. Remaining December P0s from `~/nexus-private/plan/nexus-euphoria-event-plan.md`:
+   - Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges` + global session cap.
+   - VPN correctness: `VpnStatus.connected` 180s handshake window, re-ensure peer on cache hit, release IP on provision failure, pin IP across `Regenerate`.
+   - Slim Kali image for env pods (`NEXUS_ENV_IMAGE`).
 
 ## Private share (not in git)
 
@@ -66,19 +59,15 @@ If the directory is missing, say so; do not reconstruct the plan from guesswork.
 ## Open questions / blockers
 
 - The default NetworkPolicy on `nexus-vm` (the permissive
-  `{"securityContext":{"namespace": "any"}}` one) blocks the connect test: it
-  sits in `nexus-challenges` and allows everything, so the SSH-alike result is
-  meaningless. A real connect test needs the restricted policies applied or
-  the default policy deleted.
-
-- `ClaimNextAvailableVPNIP` allocates 1015 addresses (`10.8.0.2`-`10.8.3.254`),
-  while the docs claim 1022.
+  `{"securityContext":{"namespace": "any"}}` one) blocks a strict connect test: it
+  sits in `nexus-challenges` and allows everything. A real policy test needs the
+  restricted policies applied or the default policy deleted.
 - `ClaimNextAvailableVPNIP` allocates 1015 addresses (`10.8.0.2`–`10.8.3.254`),
   while the docs claim 1022.
-- The event plan now lives in `~/nexus-private/plan/`, outside both repos, so
-  it survives a clone but not a machine that lacks the mount.
 - Real event host specs are unknown, so the capacity math and the 3x load test
   have no target yet.
+- `nexus-vm` has scratch engine instances on `:8082`/`:8084` (`mode=dev`); root-owned
+  `:8081` service is unchanged (needs sudo to upgrade).
 
 ## Noted, unresolved on the VM
 
@@ -86,27 +75,8 @@ If the directory is missing, say so; do not reconstruct the plan from guesswork.
   (`a3a30a8 feat(engine): add interactive terminal PTY websocket and $HOME file
   sync endpoints`), detached or behind `main`; use it as the file-transfer
   baseline and note the drift when upgrading.
-- The k3s admin kubeconfig the backlog mentions is not present on
-  `nexus-vm`; `kubectl` there talks to a permissive default policy
-  (`{"securityContext":{"namespace": "any"}}`) rather than the restricted
-  ones. Something removed the policy file (probably the repo's own `setup.sh`
-  from before this repo). For the connect test, create the env pod, apply
-  `deploy/network-policy-prod.yaml`, then connect.
-
-## New
-
-- `deploy/network-policy-prod.yaml` now has two documents: `nexus-prod-isolate`
-  (default-deny egress with DNS to kube-system and same-pod egress) and
-  `nexus-env-internet` (permissive egress for `nexus-role=env`). Both are
-  verified with `yaml.safe_load_all`: 2 docs, names correct. Still unexercised
-  against a live cluster.
-- `nexus-engine/internal/api/terminal.go` returns the pod's raw kube-API byte
-  stream: no error text, no shell echo, no PTY, no exec, and the endpoint only
-  checks session existence, not caller. Nothing in the backlog describes the
-  connect test it must pass or who owns it. The web app is meant to be the auth
-  boundary, and does not call it yet.
-- The engine's `/metrics` requires the API key since `b8db5bd`; the monitoring
-  stack authenticates with the key generated by `setup.sh`.
+- The k3s admin kubeconfig the backlog mentions is not present on `nexus-vm`;
+  unprivileged user uses `KUBECONFIG=~/.kube/nexus`.
 
 ## Don't redo
 

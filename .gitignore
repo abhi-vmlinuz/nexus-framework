@@ -16,6 +16,7 @@ testing/
 # Binaries
 bin/
 dist/
+plans*
 
 # Env
 .env
