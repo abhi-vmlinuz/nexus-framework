@@ -184,3 +184,14 @@ func TestReconcileVersioning(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, v2, meta.DesiredVersion)
 }
+
+func TestReleaseVPNIP(t *testing.T) {
+	s := newTestStore(t)
+	ip, err := s.ClaimNextAvailableVPNIP()
+	require.NoError(t, err)
+	require.NotEmpty(t, ip)
+
+	require.NoError(t, s.ReleaseVPNIP(ip))
+	// Empty release is a safe no-op.
+	require.NoError(t, s.ReleaseVPNIP(""))
+}

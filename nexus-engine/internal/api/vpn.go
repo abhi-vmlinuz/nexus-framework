@@ -50,11 +50,25 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	// Check for existing config first.
 	existing, err := h.d.Store.GetVPNConfig(userID)
 	if err == nil && existing != nil {
+		// Re-ensure peer on wg0 so a restarted interface or dropped peer self-heals.
+		if h.d.NodeAgent != nil {
+			if err := h.d.NodeAgent.EnsureWireGuardPeer(context.Background(), userID, existing.PublicKey, existing.VPNip); err != nil {
+				log.Printf("[VPN] re-ensure peer failed for user %s: %v", userID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register VPN peer"})
+				return
+			}
+		}
 		metricVPNClaimTotal.WithLabelValues("cached").Inc()
 		h.returnConfFile(c, existing)
 		return
 	}
 
+	h.provisionVPNConfig(c, userID, "")
+}
+
+// provisionVPNConfig generates a keypair, claims an IP (unless pinnedIP is
+// provided), registers the peer on wg0, and persists the config to Redis.
+func (h *vpnHandler) provisionVPNConfig(c *gin.Context, userID, pinnedIP string) {
 	claimStart := time.Now()
 
 	// Generate new keypair.
@@ -65,17 +79,22 @@ func (h *vpnHandler) Config(c *gin.Context) {
 		return
 	}
 
-	// Assign VPN IP (atomically claims to prevent race conditions).
-	vpnIP, err := h.d.Store.ClaimNextAvailableVPNIP()
-	if err != nil {
-		log.Printf("[VPN] IP assignment failed for user %s: %v", userID, err)
-		metricVPNClaimTotal.WithLabelValues("exhausted").Inc()
-		metricVPNClaimDuration.WithLabelValues("exhausted").Observe(time.Since(claimStart).Seconds())
-		if h.d.Telemetry != nil {
-			h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.VPNExhausted), UserID: userID, Status: "exhausted", Detail: err.Error()})
+	vpnIP := pinnedIP
+	newlyClaimed := false
+	if vpnIP == "" {
+		// Assign VPN IP (atomically claims to prevent race conditions).
+		vpnIP, err = h.d.Store.ClaimNextAvailableVPNIP()
+		if err != nil {
+			log.Printf("[VPN] IP assignment failed for user %s: %v", userID, err)
+			metricVPNClaimTotal.WithLabelValues("exhausted").Inc()
+			metricVPNClaimDuration.WithLabelValues("exhausted").Observe(time.Since(claimStart).Seconds())
+			if h.d.Telemetry != nil {
+				h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.VPNExhausted), UserID: userID, Status: "exhausted", Detail: err.Error()})
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "VPN IP pool exhausted"})
+			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "VPN IP pool exhausted"})
-		return
+		newlyClaimed = true
 	}
 
 	// Register peer with node agent (prod mode only).
@@ -83,6 +102,9 @@ func (h *vpnHandler) Config(c *gin.Context) {
 		ctx := context.Background()
 		if err := h.d.NodeAgent.EnsureWireGuardPeer(ctx, userID, pubKey, vpnIP); err != nil {
 			log.Printf("[VPN] EnsureWireGuardPeer failed for user %s: %v", userID, err)
+			if newlyClaimed {
+				_ = h.d.Store.ReleaseVPNIP(vpnIP)
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register VPN peer"})
 			return
 		}
@@ -97,6 +119,9 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	}
 	if err := h.d.Store.SetVPNConfig(cfg); err != nil {
 		log.Printf("[VPN] Redis store failed for user %s: %v", userID, err)
+		if newlyClaimed {
+			_ = h.d.Store.ReleaseVPNIP(vpnIP)
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to store VPN config"})
 		return
 	}
@@ -104,7 +129,9 @@ func (h *vpnHandler) Config(c *gin.Context) {
 	log.Printf("[VPN] provisioned peer for user %s ip=%s", userID, vpnIP)
 	metricVPNClaimTotal.WithLabelValues("claimed").Inc()
 	metricVPNClaimDuration.WithLabelValues("claimed").Observe(time.Since(claimStart).Seconds())
-	metricVPNIPsUsed.Inc()
+	if newlyClaimed {
+		metricVPNIPsUsed.Inc()
+	}
 	if h.d.Telemetry != nil {
 		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.VPNClaimed), UserID: userID, DurationMs: time.Since(claimStart).Milliseconds(), Status: "claimed", Detail: vpnIP})
 	}
@@ -132,7 +159,7 @@ func (h *vpnHandler) Status(c *gin.Context) {
 		if err == nil && resp != nil {
 			for _, peer := range resp.Peers {
 				if peer.PublicKey == cfg.PublicKey {
-					connected = true
+					connected = peer.Connected
 					break
 				}
 			}
@@ -157,20 +184,21 @@ func (h *vpnHandler) Regenerate(c *gin.Context) {
 		return
 	}
 
-	// Revoke existing peer if it exists.
+	// Revoke existing peer if it exists, while pinning its VPN IP so active
+	// iptables/ipset isolation rules for this user remain valid.
+	pinnedIP := ""
 	existing, err := h.d.Store.GetVPNConfig(userID)
-	if err == nil && existing != nil && h.d.NodeAgent != nil {
-		ctx := context.Background()
-		if err := h.d.NodeAgent.RevokeWireGuardPeer(ctx, userID, existing.PublicKey); err != nil {
-			log.Printf("[VPN] RevokeWireGuardPeer failed for user %s (non-fatal): %v", userID, err)
+	if err == nil && existing != nil {
+		pinnedIP = existing.VPNip
+		if h.d.NodeAgent != nil {
+			ctx := context.Background()
+			if err := h.d.NodeAgent.RevokeWireGuardPeer(ctx, userID, existing.PublicKey); err != nil {
+				log.Printf("[VPN] RevokeWireGuardPeer failed for user %s (non-fatal): %v", userID, err)
+			}
 		}
 	}
 
-	// Delete old config from Redis before re-provisioning.
-	_ = h.d.Store.DeleteVPNConfig(userID)
-
-	// Re-use the Config handler to generate a fresh one.
-	h.Config(c)
+	h.provisionVPNConfig(c, userID, pinnedIP)
 }
 
 // returnConfFile writes the WireGuard .conf as a file download response.

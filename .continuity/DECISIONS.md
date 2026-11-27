@@ -50,3 +50,55 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: a PVC, an initContainer that copies from the web app, or a sidecar downloader.
 - Because: one k3s node, one copy on disk, no network dependency at spawn, and a 500 MB forensic image does not get copied 200 times. A PVC needs a storage class for no benefit on a single node.
 - Revisit if: nexus goes multi-node, where hostPath stops being meaningful and this becomes object storage or a node-local PV.
+
+## D-008: Environment pods get their own endpoint, not a synthetic challenge
+- Date: 2026-11-23
+- Chose: `POST /api/v1/sessions/env` spawns an AttackBox with no challenge record.
+- Over: creating a hidden `env` challenge row and reusing `POST /api/v1/sessions`.
+- Because: the challenge store feeds the challenge list, the leaderboard and telemetry attribution. A fake row leaks into all three and has to be filtered everywhere forever. The endpoint reuses the same pod, session record, TTL, grant and telemetry path, so only the lookup is skipped.
+- Revisit if: env pods need per-college variation, where a real resource type is cleaner than a second endpoint.
+
+## D-009: Artefact mounts are named by ID and resolved inside the engine
+- Date: 2026-11-23
+- Chose: the request carries `artifact_challenge_id`; the engine joins it to `NEXUS_ARTIFACT_ROOT` (default `/var/lib/nexus/artifacts`), rejects anything that is not a plain identifier, and fails with 400 if the directory does not exist.
+- Over: accepting a host path from the caller, and over auto-creating the directory.
+- Because: a host path from the web app means a compromised or buggy caller can mount `/etc`, `/root` or a docker socket into a participant's pod. Accepting an ID keeps the trust boundary in the engine. Requiring the directory to exist turns a typo into a clear 400 instead of a pod stuck in `ContainerCreating` because hostPath type `Directory` refuses to create it.
+- Revisit if: the web app needs to mount several directories per session, where a list of IDs (not paths) is the natural extension.
+
+## D-010: Env pods get internet, challenge pods do not, by default
+- Date: 2026-11-23
+- Chose: a second NetworkPolicy in `deploy/network-policy-prod.yaml` selecting `nexus-role=env` with permissive egress, while the main prod policy is default-deny for everything.
+- Over: giving every pod internet and discovering the attacker does not need it.
+- Because: the AttackBox is a browser running arbitrary user commands and it must have internet to be useful — admin, piping tools, package installs, whatever is normal work. A challenge, by contrast, runs the code an attacker is invited to run, so internet access is the privilege the person who wrote the challenge has to ask for, not something to default to. NetworkPolicies are additive, so the env policy only widens the env pods.
+- Revisit if: user feedback says people cannot do their work with a browser, at which point reconsider default-deny.
+
+## D-022: Web-app mode relays the terminal through a second engine
+- Date: 2026-11-23
+- Chose: the engine, when `NEXUS_WS_PROXY_ADDR` is set, proxies `/api/v1/sessions/{id}/terminal` to another engine's terminal endpoint and injects that engine's API key itself.
+- Over: a kubelet `pods/exec` or SPDY proxy (that's what `ExecStream` needs, and it bypasses the whole "who is the caller" question), or shipping the key to the browser.
+- Because: a real PTY through `kubectl exec` needs the kube-apiserver creds on the connecting pod, and exec has no caller scoping beyond the user's own pod anyway — so by the time a second engine has the same API key, the marginal win is the engine-to-engine link being controllable. The relay still gives a browser something to *see* (errors, echo, compile output) and a place to put the auth check and the ownership check, which the raw stream had neither.
+- Revisit if: someone builds the kubelet exec backend — it's better because it works without a second engine.
+- Not the answer to the connect test: no need for `VITE_NEXUS_URL` or any node-agent change.
+
+## D-023: Sessions carry their role
+- Date: 2026-11-23
+- Chose: `state.Session` has a `role` field ("challenge"|"env"), written by both creators and returned by `List`/`Get`.
+- Over: deriving role from the pod label via the node agent on every read, and keeping a side channel that cannot go stale.
+- Because: the web app (D-022) needs to know whether a session is a BrowserAttackBox before deciding anything about it, including during a control plane restart where the pod label is the only other place the role lives.
+- Revisit if: someone proves the label lookup is cheap enough for their scale; then they can drop the field.
+
+## D-024: Env pods get a keep-alive
+- Date: 2026-11-23
+- Chose: `SpawnRequest.KeepAlive` adds `Command: ["sleep", "infinity"]` to the pod's single container; set for env pods only.
+- Over: making challenge pods persist, or relying on images to stay alive.
+- Because: an env pod's purpose is to hold a terminal open. Images do not, in general (`alpine:3.19` exits, phase becomes Succeeded, and kubelet's exec refuses: "cannot exec into a container in a completed pod"). The fix is in `k8s/client.go` + `api/sessions.go`.
+- Revisit if: someone wants env pods to be image-command-driven, e.g. a custom AttackBox image that starts sshd itself.
+
+## D-025: Capacity guards and VPN IP lifecycle fixes
+- Date: 2026-11-27
+- Chose:
+  1. `deploy/resource-quota.yaml` (`LimitRange` 500m/512Mi default, 2/2Gi max + `ResourceQuota` 250 pods) and `NEXUS_MAX_SESSIONS` global active session cap in `nexus-engine`.
+  2. `Store.ReleaseVPNIP` in `redis.go` + `vpn.go` fixes: `VpnStatus.connected` uses `peer.Connected` (180s handshake window), cached `Config` hits re-ensure the WireGuard peer, failed provisioning releases newly claimed IPs, and `Regenerate` pins the user's existing VPN IP.
+- Over: leaving `vpn_ips` to leak on node-agent errors or changing a user's VPN IP on key rotation (which strands active `EnsureUserIsolation` iptables rules).
+- Because: 200+ concurrent users on a single k3s host cannot survive unbounded pods or leaked `/22` addresses, and "connected" must reflect an actual WireGuard handshake rather than peer presence.
+- Revisit if: multi-node k8s replaces single-host limits, or `Regenerate` is explicitly intended to rotate IPs alongside revoking isolation rules.

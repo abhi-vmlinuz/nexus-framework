@@ -28,15 +28,15 @@ import (
 )
 
 const (
-	labelApp       = "app"
-	labelAppValue  = "nexus-challenge"
-	labelSessionID = "nexus-session-id"
-	labelChallengeID = "nexus-challenge-id"
-	labelUserID    = "nexus-user-id"
-	labelRole      = "nexus-role"
-	annotationTTL  = "nexus.io/ttl"
+	labelApp            = "app"
+	labelAppValue       = "nexus-challenge"
+	labelSessionID      = "nexus-session-id"
+	labelChallengeID    = "nexus-challenge-id"
+	labelUserID         = "nexus-user-id"
+	labelRole           = "nexus-role"
+	annotationTTL       = "nexus.io/ttl"
 	annotationCreatedAt = "nexus.io/created-at"
-	podNamePrefix  = "chal-"
+	podNamePrefix       = "chal-"
 )
 
 // Pod roles. A challenge pod is something participants attack; an env pod is
@@ -109,12 +109,16 @@ type SpawnRequest struct {
 	// Multi-container (if set, Image is ignored).
 	Containers []ContainerSpec
 	// Single-container overrides.
-	Resources      *Resources
-	ReadinessProbe *ReadinessProbe
-	TTLMinutes     int
+	Resources        *Resources
+	ReadinessProbe   *ReadinessProbe
+	TTLMinutes       int
 	ImagePullSecrets []string
 	// Role is "challenge" or "env". Empty means "challenge".
 	Role string
+	// KeepAlive, when true, adds a keep-alive command to the pod so it does not
+	// exit as soon as its image entrypoint returns. Env pods need it: their
+	// whole job is to hold a terminal open, and a pod that exits can't exec.
+	KeepAlive bool
 	// Volumes are mounted into every container in the pod. Single-node only:
 	// nexus runs one k3s node by design, so hostPath is the whole story.
 	Volumes []VolumeMount
@@ -200,6 +204,11 @@ type Client struct {
 	clientset  *kubernetes.Clientset
 	restConfig *rest.Config
 	namespace  string
+
+	// execStream is ExecStream, swappable in tests.
+	execStream func(ctx context.Context, sessionID, containerName string, cmd []string,
+		tty bool, stdin io.Reader, stdout, stderr io.Writer,
+		sizeQueue remotecommand.TerminalSizeQueue) error
 }
 
 // k8sCtx returns a context with a 30-second timeout for K8s API calls.
@@ -238,7 +247,47 @@ func New(namespace string) (*Client, error) {
 		}
 		log.Printf("created namespace %s", namespace)
 	}
-	return &Client{clientset: cs, restConfig: cfg, namespace: namespace}, nil
+	client := &Client{clientset: cs, restConfig: cfg, namespace: namespace}
+	client.execStream = func(ctx context.Context, sessionID, containerName string, cmd []string, tty bool, stdin io.Reader, stdout, stderr io.Writer, sizeQueue remotecommand.TerminalSizeQueue) error {
+		return client.rawExecStream(ctx, sessionID, containerName, cmd, tty, stdin, stdout, stderr, sizeQueue)
+	}
+	return client, nil
+}
+
+// rawExecStream is the default implementation of ExecStream, kept separate so
+// tests can swap Client.execStream without the REST path.
+func (c *Client) rawExecStream(ctx context.Context, sessionID, containerName string, cmd []string, tty bool, stdin io.Reader, stdout, stderr io.Writer, sizeQueue remotecommand.TerminalSizeQueue) error {
+	podName := podNamePrefix + sessionID
+	req := c.clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(c.namespace).
+		SubResource("exec")
+
+	opts := &corev1.PodExecOptions{
+		Command: cmd,
+		Stdin:   stdin != nil,
+		Stdout:  stdout != nil,
+		Stderr:  stderr != nil,
+		TTY:     tty,
+	}
+	if containerName != "" {
+		opts.Container = containerName
+	}
+	req.VersionedParams(opts, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(c.restConfig, "POST", req.URL())
+	if err != nil {
+		return fmt.Errorf("create spdy executor: %w", err)
+	}
+
+	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Tty:               tty,
+		TerminalSizeQueue: sizeQueue,
+	})
 }
 
 func (c *Client) Clientset() *kubernetes.Clientset {
@@ -314,9 +363,15 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 			// Add Readiness Probe
 			if ct.ReadinessProbe != nil {
 				// Apply sensible defaults for zero-value probe fields.
-				if ct.ReadinessProbe.TimeoutSeconds == 0 { ct.ReadinessProbe.TimeoutSeconds = 5 }
-				if ct.ReadinessProbe.PeriodSeconds == 0 { ct.ReadinessProbe.PeriodSeconds = 10 }
-				if ct.ReadinessProbe.FailureThreshold == 0 { ct.ReadinessProbe.FailureThreshold = 3 }
+				if ct.ReadinessProbe.TimeoutSeconds == 0 {
+					ct.ReadinessProbe.TimeoutSeconds = 5
+				}
+				if ct.ReadinessProbe.PeriodSeconds == 0 {
+					ct.ReadinessProbe.PeriodSeconds = 10
+				}
+				if ct.ReadinessProbe.FailureThreshold == 0 {
+					ct.ReadinessProbe.FailureThreshold = 3
+				}
 
 				probe := &corev1.Probe{
 					InitialDelaySeconds: int32(ct.ReadinessProbe.InitialDelaySeconds),
@@ -359,6 +414,9 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 			Ports:           ports,
 			ImagePullPolicy: corev1.PullIfNotPresent,
 		}}
+		if req.KeepAlive {
+			podContainers[0].Command = []string{"sleep", "infinity"}
+		}
 
 		// Add Resource Limits
 		if req.Resources != nil {
@@ -383,9 +441,15 @@ func (c *Client) SpawnPod(req SpawnRequest) (*PodInfo, error) {
 		// Add Readiness Probe
 		if req.ReadinessProbe != nil {
 			// Apply sensible defaults for zero-value probe fields.
-			if req.ReadinessProbe.TimeoutSeconds == 0 { req.ReadinessProbe.TimeoutSeconds = 5 }
-			if req.ReadinessProbe.PeriodSeconds == 0 { req.ReadinessProbe.PeriodSeconds = 10 }
-			if req.ReadinessProbe.FailureThreshold == 0 { req.ReadinessProbe.FailureThreshold = 3 }
+			if req.ReadinessProbe.TimeoutSeconds == 0 {
+				req.ReadinessProbe.TimeoutSeconds = 5
+			}
+			if req.ReadinessProbe.PeriodSeconds == 0 {
+				req.ReadinessProbe.PeriodSeconds = 10
+			}
+			if req.ReadinessProbe.FailureThreshold == 0 {
+				req.ReadinessProbe.FailureThreshold = 3
+			}
 
 			probe := &corev1.Probe{
 				InitialDelaySeconds: int32(req.ReadinessProbe.InitialDelaySeconds),
@@ -641,37 +705,7 @@ func isNotFound(err error) bool {
 // ExecStream attaches to a running pod and streams stdin/stdout/stderr via SPDY.
 // It supports interactive TTY and window resize events.
 func (c *Client) ExecStream(ctx context.Context, sessionID, containerName string, cmd []string, tty bool, stdin io.Reader, stdout, stderr io.Writer, sizeQueue remotecommand.TerminalSizeQueue) error {
-	podName := podNamePrefix + sessionID
-	req := c.clientset.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Name(podName).
-		Namespace(c.namespace).
-		SubResource("exec")
-
-	opts := &corev1.PodExecOptions{
-		Command: cmd,
-		Stdin:   stdin != nil,
-		Stdout:  stdout != nil,
-		Stderr:  stderr != nil,
-		TTY:     tty,
-	}
-	if containerName != "" {
-		opts.Container = containerName
-	}
-	req.VersionedParams(opts, scheme.ParameterCodec)
-
-	executor, err := remotecommand.NewSPDYExecutor(c.restConfig, "POST", req.URL())
-	if err != nil {
-		return fmt.Errorf("create spdy executor: %w", err)
-	}
-
-	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:             stdin,
-		Stdout:            stdout,
-		Stderr:            stderr,
-		Tty:               tty,
-		TerminalSizeQueue: sizeQueue,
-	})
+	return c.execStream(ctx, sessionID, containerName, cmd, tty, stdin, stdout, stderr, sizeQueue)
 }
 
 // Exec runs a non-interactive command inside the pod and captures stdout/stderr.
@@ -703,4 +737,3 @@ func (c *Client) ReadHomeFile(ctx context.Context, sessionID, filename string) (
 	}
 	return stdout.Bytes(), nil
 }
-

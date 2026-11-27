@@ -63,8 +63,8 @@ type ExecAction struct {
 
 // Challenge is registered by CTF devs via POST /api/v1/challenges.
 type Challenge struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 	// Single-container fields (mutually exclusive with Containers).
 	Image          string          `json:"image,omitempty"`
 	DockerfilePath string          `json:"dockerfile_path,omitempty"`
@@ -72,12 +72,12 @@ type Challenge struct {
 	Resources      *Resources      `json:"resources,omitempty"`
 	ReadinessProbe *ReadinessProbe `json:"readiness_probe,omitempty"`
 	// Multi-container fields.
-	Containers     []ContainerSpec `json:"containers,omitempty"`
+	Containers []ContainerSpec `json:"containers,omitempty"`
 	// Common fields.
-	TTLMinutes     int             `json:"ttl_minutes"`
-	Ports          []int           `json:"ports"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	TTLMinutes int       `json:"ttl_minutes"`
+	Ports      []int     `json:"ports"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // IsMultiContainer returns true when the challenge has multiple containers.
@@ -103,15 +103,17 @@ func (c Challenge) AllPorts() []int {
 
 // Session represents a running challenge instance.
 type Session struct {
-	ID          string    `json:"session_id"`
-	UserID      string    `json:"user_id"`
-	ChallengeID string    `json:"challenge_id"`
-	PodName     string    `json:"pod_name"`
-	PodIP       string    `json:"pod_ip"`
-	Status      string    `json:"status"` // creating|running|terminating|terminated|expired|failed
-	CreatedAt   time.Time `json:"created_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	VpnIP       string    `json:"vpn_ip,omitempty"`
+	ID          string `json:"session_id"`
+	UserID      string `json:"user_id"`
+	ChallengeID string `json:"challenge_id"`
+	PodName     string `json:"pod_name"`
+	PodIP       string `json:"pod_ip"`
+	// Role is "challenge" or "env"; empty means challenge (legacy records).
+	Role      string    `json:"role,omitempty"`
+	Status    string    `json:"status"` // creating|running|terminating|terminated|expired|failed
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	VpnIP     string    `json:"vpn_ip,omitempty"`
 	// Reconcile bookkeeping.
 	ReconcileVersion         int64     `json:"reconcile_version"`
 	LastReconciledVersion    int64     `json:"last_reconciled_version"`
@@ -574,6 +576,15 @@ func (s *Store) SetVPNConfig(cfg *VPNConfig) error {
 	return nil
 }
 
+// ReleaseVPNIP removes an allocated IP from the vpn_ips pool.
+// Safe to call when a provisioning step fails after ClaimNextAvailableVPNIP.
+func (s *Store) ReleaseVPNIP(ip string) error {
+	if ip == "" {
+		return nil
+	}
+	return s.client.SRem(s.ctx, "vpn_ips", ip).Err()
+}
+
 // DeleteVPNConfig removes a user's VPN config and frees their IP.
 func (s *Store) DeleteVPNConfig(userID string) error {
 	cfg, err := s.GetVPNConfig(userID)
@@ -623,4 +634,3 @@ func (s *Store) ClaimNextAvailableVPNIP() (string, error) {
 	}
 	return ip, nil
 }
-

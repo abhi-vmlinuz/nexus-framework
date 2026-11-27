@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: nexus-default-limits
+  namespace: nexus-challenges
+  labels:
+    managed-by: nexus
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "2Gi"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: nexus-challenges-quota
+  namespace: nexus-challenges
+  labels:
+    managed-by: nexus
+spec:
+  hard:
+    pods: "250"

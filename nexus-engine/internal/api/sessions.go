@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/k8s"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/state"
 	"github.com/abhi-vmlinuz/nexus-framework/nexus-engine/internal/telemetry"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type sessionHandler struct{ d Deps }
@@ -68,17 +71,9 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Enforce session limit if configured.
-	maxPerUser := h.d.Cfg.GetMaxPerUser()
-	if maxPerUser > 0 {
-		count, _ := h.d.Store.CountUserActiveSessions(req.UserID)
-		if count >= maxPerUser {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":   "SESSION_LIMIT_REACHED",
-				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", req.UserID, count, maxPerUser),
-			})
-			return
-		}
+	// Enforce global and per-user session limits if configured.
+	if !h.checkSessionLimits(c, req.UserID) {
+		return
 	}
 
 	// Prod mode: vpn_ip is required for isolation.
@@ -230,6 +225,228 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		"expires_at":   sess.ExpiresAt,
 		"ports":        ch.AllPorts(),
 		"services":     services,
+	})
+}
+
+// CreateEnvSessionRequest is the body for POST /api/v1/sessions/env.
+//
+// An environment session is the browser AttackBox: a pod a participant works
+// in, not a target they attack. It has no challenge record, so it skips the
+// challenge lookup that POST /api/v1/sessions requires. Creating a fake
+// challenge row instead would leak a non-challenge into the challenge list and
+// the leaderboard.
+type CreateEnvSessionRequest struct {
+	UserID string `json:"user_id" binding:"required"`
+
+	// Image overrides the configured environment image. Empty means
+	// NEXUS_ENV_IMAGE.
+	Image string `json:"image,omitempty"`
+
+	// TTLMinutes overrides the configured lifetime, capped at envMaxTTLMinutes.
+	TTLMinutes int `json:"ttl_minutes,omitempty"`
+
+	// ArtifactChallengeID names a directory under the engine's artefact root to
+	// mount read-only at /artifacts. It is an identifier, not a path: the engine
+	// joins it to NEXUS_ARTIFACT_ROOT, so a caller cannot ask for /etc.
+	ArtifactChallengeID string `json:"artifact_challenge_id,omitempty"`
+
+	VpnIP string `json:"vpn_ip,omitempty"`
+}
+
+const (
+	// envMaxTTLMinutes bounds an AttackBox lifetime. An environment pod holds a
+	// real shell, so it must not be able to outlive the event by accident.
+	envMaxTTLMinutes = 240
+	// envArtifactMountPath is where challenge files appear inside an env pod.
+	envArtifactMountPath = "/artifacts"
+)
+
+// validArtifactID rejects anything that could escape the artefact root.
+func validArtifactID(id string) bool {
+	if id == "" || id == "." || id == ".." {
+		return false
+	}
+	return !strings.ContainsAny(id, `/\`) && !strings.Contains(id, "..")
+}
+
+// checkSessionLimits enforces the cluster-wide session cap and per-user limit.
+func (h *sessionHandler) checkSessionLimits(c *gin.Context, userID string) bool {
+	if maxGlobal := h.d.Cfg.GetMaxGlobalSessions(); maxGlobal > 0 {
+		active, err := h.d.Store.ListActiveSessions()
+		if err == nil && len(active) >= maxGlobal {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":   "GLOBAL_SESSION_LIMIT_REACHED",
+				"message": fmt.Sprintf("cluster active session limit reached (%d/%d)", len(active), maxGlobal),
+			})
+			return false
+		}
+	}
+	if maxPerUser := h.d.Cfg.GetMaxPerUser(); maxPerUser > 0 {
+		count, _ := h.d.Store.CountUserActiveSessions(userID)
+		if count >= maxPerUser {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "SESSION_LIMIT_REACHED",
+				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", userID, count, maxPerUser),
+			})
+			return false
+		}
+	}
+	return true
+}
+
+// CreateEnv spawns an environment pod (browser AttackBox) for a user.
+func (h *sessionHandler) CreateEnv(c *gin.Context) {
+	var req CreateEnvSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ttl := h.d.Cfg.GetEnvTTLMinutes()
+	if req.TTLMinutes > 0 {
+		ttl = req.TTLMinutes
+	}
+	if ttl > envMaxTTLMinutes {
+		ttl = envMaxTTLMinutes
+	}
+
+	image := req.Image
+	if image == "" {
+		image = h.d.Cfg.GetEnvImage()
+	}
+
+	var volumes []k8s.VolumeMount
+	if req.ArtifactChallengeID != "" {
+		if !validArtifactID(req.ArtifactChallengeID) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "INVALID_ARTIFACT_ID",
+				"message": "artifact_challenge_id must be a plain identifier, not a path",
+			})
+			return
+		}
+		hostPath := filepath.Join(h.d.Cfg.GetArtifactRoot(), req.ArtifactChallengeID)
+		info, err := os.Stat(hostPath)
+		if err != nil || !info.IsDir() {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "ARTIFACTS_NOT_FOUND",
+				"message": fmt.Sprintf("no artefact directory for %q at %s", req.ArtifactChallengeID, hostPath),
+			})
+			return
+		}
+		volumes = append(volumes, k8s.VolumeMount{
+			Name:      "artifacts",
+			HostPath:  hostPath,
+			MountPath: envArtifactMountPath,
+			// ReadWrite is left false: the participant gets the files, not the
+			// right to modify the shared copy every other participant reads.
+		})
+	}
+
+	if !h.checkSessionLimits(c, req.UserID) {
+		return
+	}
+
+	sessionID := fmt.Sprintf("sess-%s", uuid.New().String()[:8])
+	createStart := time.Now()
+	log.Printf("session %s: creating env pod for user=%s image=%s", sessionID, req.UserID, image)
+
+	spawnReq := k8s.SpawnRequest{
+		SessionID:  sessionID,
+		UserID:     req.UserID,
+		TTLMinutes: ttl,
+		Role:       k8s.RoleEnv,
+		Image:      image,
+		KeepAlive:  true,
+		Resources: &k8s.Resources{
+			CPU:    h.d.Cfg.GetDefaultCPULimit(),
+			Memory: h.d.Cfg.GetDefaultMemoryLimit(),
+		},
+		Volumes: volumes,
+	}
+	if h.d.Cfg.Registry.AuthType != "none" {
+		spawnReq.ImagePullSecrets = []string{"nexus-pull-secret"}
+	}
+
+	podInfo, err := h.d.K8s.SpawnPod(spawnReq)
+	if err != nil {
+		log.Printf("session %s: env pod spawn failed: %v", sessionID, err)
+		metricSessionCreateTotal.WithLabelValues("failed").Inc()
+		metricSessionCreateDuration.WithLabelValues("failed").Observe(time.Since(createStart).Seconds())
+		if h.d.Telemetry != nil {
+			h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionFailed), UserID: req.UserID, SessionID: sessionID, DurationMs: time.Since(createStart).Milliseconds(), Status: "failed", Detail: err.Error()})
+		}
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "POD_SPAWN_FAILED",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	now := time.Now().UTC()
+	sess := state.Session{
+		ID:        sessionID,
+		UserID:    req.UserID,
+		Role:      k8s.RoleEnv,
+		PodName:   podInfo.PodName,
+		PodIP:     podInfo.PodIP,
+		Status:    "running",
+		CreatedAt: now,
+		ExpiresAt: now.Add(time.Duration(ttl) * time.Minute),
+		VpnIP:     req.VpnIP,
+	}
+
+	if h.d.NodeAgent != nil && podInfo.PodIP != "" {
+		ctx := context.Background()
+		if err := h.d.NodeAgent.GrantPodAccess(ctx, req.UserID, podInfo.PodIP); err != nil {
+			log.Printf("session %s: GrantPodAccess failed (non-fatal): %v", sessionID, err)
+		}
+		if req.VpnIP != "" {
+			if err := h.d.NodeAgent.EnsureUserIsolation(ctx, req.UserID, req.VpnIP); err != nil {
+				log.Printf("session %s: EnsureUserIsolation failed (non-fatal): %v", sessionID, err)
+			}
+		}
+		if err := h.d.Store.SaveGrant(state.GrantRecord{
+			SessionID: sessionID,
+			UserID:    req.UserID,
+			PodIP:     podInfo.PodIP,
+			Status:    "applied",
+			GrantedAt: now,
+		}); err != nil {
+			log.Printf("WARNING: failed to save grant for session %s: %v", sessionID, err)
+		}
+	}
+
+	if err := h.d.Store.SaveSession(sess); err != nil {
+		log.Printf("session %s: save failed: %v", sessionID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save session"})
+		return
+	}
+
+	if _, err := h.d.Store.TouchDesiredVersion(sessionID, "env_create"); err != nil {
+		log.Printf("session %s: touch desired version failed: %v", sessionID, err)
+	}
+	h.d.Controller.Touch(sessionID, "env_create")
+
+	metricSessionCreateTotal.WithLabelValues("created").Inc()
+	metricSessionCreateDuration.WithLabelValues("created").Observe(time.Since(createStart).Seconds())
+	metricActiveSessions.Inc()
+	if h.d.Telemetry != nil {
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionCreated), UserID: req.UserID, SessionID: sessionID, DurationMs: time.Since(createStart).Milliseconds(), Status: "created"})
+		h.d.Telemetry.Append(telemetry.Event{Type: string(telemetry.SessionReady), UserID: req.UserID, SessionID: sessionID, DurationMs: time.Since(createStart).Milliseconds(), Status: "ready"})
+	}
+
+	log.Printf("session %s: env pod created | pod_ip=%s", sessionID, podInfo.PodIP)
+	c.JSON(http.StatusCreated, gin.H{
+		"session_id":        sess.ID,
+		"user_id":           sess.UserID,
+		"role":              k8s.RoleEnv,
+		"pod_ip":            sess.PodIP,
+		"pod_name":          sess.PodName,
+		"status":            sess.Status,
+		"created_at":        sess.CreatedAt,
+		"expires_at":        sess.ExpiresAt,
+		"ttl_minutes":       ttl,
+		"artifacts_mounted": len(volumes) > 0,
 	})
 }
 

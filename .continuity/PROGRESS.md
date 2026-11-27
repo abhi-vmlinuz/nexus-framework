@@ -4,53 +4,30 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-23: engine foundations for the AttackBox sit on branch
-`feat/attackbox-engine-foundations`: the `nexus-role` pod label (`challenge` |
-`env`) and hostPath volume support in `SpawnRequest`. Build, vet and the full
-engine test suite pass. Awaiting MR. Continuity scaffolding and the
-private-share note are merged. Telemetry T1 is still unmerged
-(`feat/telemetry-t1-scrape-stack`, `31b5104`, no MR).
+2026-11-27: `feat/attackbox-env-session` (**MR !8** open on GitLab) now includes:
+- Env-pod sessions (`POST /api/v1/sessions/env`, `/artifacts` read-only hostPath mounts, `NEXUS_WS_PROXY_ADDR` web-app mode, `nexus-role=env`, `sleep infinity` keep-alive, `deploy/network-policy-prod.yaml` `/22` + `nexus-env-internet`).
+- Capacity guards (D-025): `deploy/resource-quota.yaml` (`LimitRange` + `ResourceQuota` 250 pods in `nexus-challenges`) and `NEXUS_MAX_SESSIONS` global active session cap in `nexus-engine` (`checkSessionLimits` returning `429 GLOBAL_SESSION_LIMIT_REACHED`).
+- VPN correctness (D-025): `VpnStatus.connected` uses `peer.Connected` (180s handshake window), cached `Config` hits re-ensure the WireGuard peer, failed provisioning releases newly claimed IPs via `Store.ReleaseVPNIP`, and `Regenerate` pins the user's existing VPN IP.
+- Slim Kali Dockerfile (`deploy/kali-slim/Dockerfile`, `sleep infinity`, no systemd/sshd/code-server).
 
 ## Current task
 
-- Goal: land the two engine primitives the AttackBox needs, so the web app can
-  create an env session with an artefact mount.
-- In scope (files/dirs): `nexus-engine/internal/k8s/client.go`,
-  `nexus-engine/internal/api/sessions.go`, `nexus-engine/internal/k8s/client_test.go`.
-- Out of scope: env session creation without a challenge record (that is A3 and
-  needs a decision about what an AttackBox "challenge" is), the WebSocket
-  proxy, the Kali image, quotas.
-- Done when: `POST /api/v1/sessions` accepts `role`, an invalid role is a 400,
-  the pod carries `nexus-role`, and `volumes[]` produces a read-only mount.
+- Goal: finish December P0 hardening in `nexus-framework` and verify end-to-end AttackBox flow with `rlabz-ctf` on the Fedora host.
+- In scope (files/dirs): `nexus-engine/internal/config/config.go`, `nexus-engine/internal/api/sessions.go`, `nexus-engine/internal/api/vpn.go`, `nexus-engine/internal/state/redis.go`, `nexus-engine/internal/api/env_sessions_test.go`, `nexus-engine/internal/state/redis_test.go`, `deploy/resource-quota.yaml`, `deploy/kali-slim/Dockerfile`, `.continuity/`.
+- Out of scope: telemetry T1 MR (`feat/telemetry-t1-scrape-stack`), multi-tenancy/HA.
+- Done when: `go build ./...`, `go vet ./...`, `go test ./...` pass, and live browser AttackBox + `deploy/resource-quota.yaml` + slim Kali image are verified against `nexus-vm`.
 
 ## Last session
 
-- Done: telemetry T1 — Prometheus, Grafana, kube-state-metrics, `kubectl
-  proxy` scrape path, provisioning through `setup.sh` and the Go installer,
-  docs. Verified on the VM: all three targets up, dashboard in the `Nexus`
-  folder, attribution query returns a labelled pod. Continuity scaffolding and
-  the private-share note merged afterwards.
-- Half-finished (files touched, what's missing): the T1 branch is unmerged and
-  has no MR. `setup.sh` has never been run end to end on a clean machine (VM
-  sudo needs a password, so Phase 8.5 was validated by hand). The AttackBox
-  engine branch is unmerged and unverified against a real cluster.
-- Also merged earlier: `.continuity/` onboarding and the private-share note.
-  No runtime change.
+- Implemented D-025 capacity guards + VPN lifecycle fixes + `deploy/kali-slim/Dockerfile`.
+- Verified: `go build ./...`, `go vet ./...`, `go test ./...` pass (`internal/api`, `internal/k8s`, `internal/state`); `deploy/resource-quota.yaml` validated with `yaml.safe_load_all` (`LimitRange`, `ResourceQuota`).
+- Not yet verified live: building `deploy/kali-slim/Dockerfile` on `nexus-vm`, applying `deploy/resource-quota.yaml` and `deploy/network-policy-prod.yaml` on `nexus-vm`, and running the full browser AttackBox test from `rlabz-ctf` on the Fedora host.
 
 ## Next up
 
-1. Merge `feat/attackbox-engine-foundations`, then build the backend
-   WebSocket proxy (A6) — the biggest unknown in P1.
-2. Open the MR for `feat/telemetry-t1-scrape-stack` and get it merged.
-3. Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges`, plus
-   a global session cap. Today only `NEXUS_MAX_SESSIONS_PER_USER` exists.
-4. VPN correctness: `VpnStatus.connected` should use the node agent's 180s
-   handshake window instead of "peer exists"; re-ensure the peer on a cached
-   config hit; release the IP when provisioning fails; pin the IP across
-   `Regenerate`.
-5. Env session creation end to end: an AttackBox that has no challenge record,
-   with the slim Kali image, the `/artifacts` mount and a 60-minute TTL.
-   Blocked on deciding how `challenge_id` is satisfied for a non-challenge.
+1. Build `deploy/kali-slim/Dockerfile` on `nexus-vm` (or local registry) and apply `deploy/resource-quota.yaml` + `deploy/network-policy-prod.yaml`.
+2. Reopen/update `rlabz-ctf` PR for `fix/attackbox-terminal-proxy`, run the full browser AttackBox test from Fedora host → `nexus-vm`, and merge both `MR !8` and `rlabz-ctf` PR.
+3. Open and merge `feat/telemetry-t1-scrape-stack` (`31b5104`) after core product flows are verified.
 
 ## Private share (not in git)
 
@@ -68,23 +45,24 @@ If the directory is missing, say so; do not reconstruct the plan from guesswork.
 
 ## Open questions / blockers
 
-- `deploy/setup.sh` renders the VPN subnet as `10.8.0.0/22`;
-  `deploy/network-policy-prod.yaml` still says `/24`. The script is the source
-  of truth, but a stale file that looks authoritative is a trap.
+- The default NetworkPolicy on `nexus-vm` (the permissive
+  `{"securityContext":{"namespace": "any"}}` one) blocks a strict connect test: it
+  sits in `nexus-challenges` and allows everything. A real policy test needs the
+  restricted policies applied or the default policy deleted.
 - `ClaimNextAvailableVPNIP` allocates 1015 addresses (`10.8.0.2`–`10.8.3.254`),
   while the docs claim 1022.
-- The event plan now lives in `~/nexus-private/plan/`, outside both repos, so
-  it survives a clone but not a machine that lacks the mount.
 - Real event host specs are unknown, so the capacity math and the 3x load test
   have no target yet.
+- `nexus-vm` root-owned `:8081` `nexus-engine` service needs sudo to upgrade to `feat/attackbox-env-session`.
 
-## Noticed, not touched
+## Noted, unresolved on the VM
 
-- `nexus-engine/internal/api/terminal.go` checks that a session exists but not
-  who owns it. The web app is meant to be the auth boundary, and does not call
-  it yet.
-- The engine's `/metrics` requires the API key since `b8db5bd`; the monitoring
-  stack authenticates with the key generated by `setup.sh`.
+- `nexus-vm` git repo is at branch `feat/terminal-exec-gateway`
+  (`a3a30a8 feat(engine): add interactive terminal PTY websocket and $HOME file
+  sync endpoints`), detached or behind `main`; use it as the file-transfer
+  baseline and note the drift when upgrading.
+- The k3s admin kubeconfig the backlog mentions is not present on `nexus-vm`;
+  unprivileged user uses `KUBECONFIG=~/.kube/nexus`.
 
 ## Don't redo
 

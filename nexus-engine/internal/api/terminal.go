@@ -80,6 +80,21 @@ func (h *terminalHandler) Connect(c *gin.Context) {
 	}
 	defer ws.Close()
 
+	// Web-app mode: relay to the other engine's terminal, which has the API
+	// key. The browser never sees the key, and this mode also gives people
+	// who cannot run a node agent a path to a shell.
+	if b := h.d.Backend; b.CanServe() {
+		up, err := b.Client.OpenTerminal(c.Request.Context(), sessionID)
+		if err != nil {
+			log.Printf("terminal: open upstream for %s failed: %v", sessionID, err)
+			ws.Close()
+			return
+		}
+		defer up.Close()
+		b.Pump(ws, up)
+		return
+	}
+
 	// Setup stdin pipe
 	stdinReader, stdinWriter := io.Pipe()
 	stdoutWriter := &wsWriter{conn: ws}
