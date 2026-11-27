@@ -4,43 +4,30 @@ _Rewrite this file each session. Don't let it grow forever._
 
 ## Last known state
 
-2026-11-27: `main` has the AttackBox engine primitives (`87cccdb`: `nexus-role`
-label, hostPath volumes). Branch `feat/attackbox-env-session` (`61acc34`, **MR !8
-open** on GitLab, unmerged) adds:
-- `POST /api/v1/sessions/env` + `/artifacts` read-only hostPath mounts by ID (D-008, D-009)
-- `deploy/network-policy-prod.yaml` `/22` ingress, default-deny challenge egress, and `nexus-env-internet` (D-010)
-- Web-app WS proxy mode (`NEXUS_WS_PROXY_ADDR`, D-022)
-- Session `Role` (`"challenge"|"env"`) on `state.Session` (D-023)
-- `sleep infinity` keep-alive for env pods (D-024)
-
-Live `nexus-vm` connect test ran on scratch engine (`:8082`/`:8084`, `mode=dev`):
-env pod spawned with `nexus-role=env` and `sleep infinity`, and WS terminal shell
-echo succeeded. Full browser AttackBox test is still pending.
-Telemetry T1 remains unmerged on `feat/telemetry-t1-scrape-stack` (`31b5104`, no MR yet).
+2026-11-27: `feat/attackbox-env-session` (**MR !8** open on GitLab) now includes:
+- Env-pod sessions (`POST /api/v1/sessions/env`, `/artifacts` read-only hostPath mounts, `NEXUS_WS_PROXY_ADDR` web-app mode, `nexus-role=env`, `sleep infinity` keep-alive, `deploy/network-policy-prod.yaml` `/22` + `nexus-env-internet`).
+- Capacity guards (D-025): `deploy/resource-quota.yaml` (`LimitRange` + `ResourceQuota` 250 pods in `nexus-challenges`) and `NEXUS_MAX_SESSIONS` global active session cap in `nexus-engine` (`checkSessionLimits` returning `429 GLOBAL_SESSION_LIMIT_REACHED`).
+- VPN correctness (D-025): `VpnStatus.connected` uses `peer.Connected` (180s handshake window), cached `Config` hits re-ensure the WireGuard peer, failed provisioning releases newly claimed IPs via `Store.ReleaseVPNIP`, and `Regenerate` pins the user's existing VPN IP.
+- Slim Kali Dockerfile (`deploy/kali-slim/Dockerfile`, `sleep infinity`, no systemd/sshd/code-server).
 
 ## Current task
 
-- Goal: sync continuity state across `nexus-framework` and `rlabz-ctf`, then align on the next December P0/AttackBox milestone.
-- In scope (files/dirs): `.continuity/PROGRESS.md`, `.gitignore` (local `plans*` sync).
-- Out of scope: feature edits until plan/agenda is confirmed with user.
-- Done when: `PROGRESS.md` matches `HEAD` (`61acc34`) and MR `!8` state, and `go test ./...` passes.
+- Goal: finish December P0 hardening in `nexus-framework` and verify end-to-end AttackBox flow with `rlabz-ctf` on the Fedora host.
+- In scope (files/dirs): `nexus-engine/internal/config/config.go`, `nexus-engine/internal/api/sessions.go`, `nexus-engine/internal/api/vpn.go`, `nexus-engine/internal/state/redis.go`, `nexus-engine/internal/api/env_sessions_test.go`, `nexus-engine/internal/state/redis_test.go`, `deploy/resource-quota.yaml`, `deploy/kali-slim/Dockerfile`, `.continuity/`.
+- Out of scope: telemetry T1 MR (`feat/telemetry-t1-scrape-stack`), multi-tenancy/HA.
+- Done when: `go build ./...`, `go vet ./...`, `go test ./...` pass, and live browser AttackBox + `deploy/resource-quota.yaml` + slim Kali image are verified against `nexus-vm`.
 
 ## Last session
 
-- Verified repo vs. `PROGRESS.md`: `go test ./...` passes for `internal/api`,
-  `internal/k8s`, `internal/state` (`cmd`, `config`, `controller`, `nodeagent`,
-  `registry`, `telemetry` have no test files).
-- Synced `PROGRESS.md` with commits `85cbf9b`–`61acc34` and open GitLab MR `!8`.
-- Untracked local files left untouched: `analysis.zip`, `docs/nexus-telemetry-plan.md`, `docs/nexus-telemetry-plan.tex`.
+- Implemented D-025 capacity guards + VPN lifecycle fixes + `deploy/kali-slim/Dockerfile`.
+- Verified: `go build ./...`, `go vet ./...`, `go test ./...` pass (`internal/api`, `internal/k8s`, `internal/state`); `deploy/resource-quota.yaml` validated with `yaml.safe_load_all` (`LimitRange`, `ResourceQuota`).
+- Not yet verified live: building `deploy/kali-slim/Dockerfile` on `nexus-vm`, applying `deploy/resource-quota.yaml` and `deploy/network-policy-prod.yaml` on `nexus-vm`, and running the full browser AttackBox test from `rlabz-ctf` on the Fedora host.
 
 ## Next up
 
-1. Finish browser-level AttackBox smoke test against `rlabz-ctf` (`fix/attackbox-terminal-proxy`) and merge **MR !8** (`feat/attackbox-env-session` → `main`).
-2. Open and merge MR for `feat/telemetry-t1-scrape-stack` (`31b5104`).
-3. Remaining December P0s from `~/nexus-private/plan/nexus-euphoria-event-plan.md`:
-   - Capacity guards: `LimitRange` + `ResourceQuota` in `nexus-challenges` + global session cap.
-   - VPN correctness: `VpnStatus.connected` 180s handshake window, re-ensure peer on cache hit, release IP on provision failure, pin IP across `Regenerate`.
-   - Slim Kali image for env pods (`NEXUS_ENV_IMAGE`).
+1. Build `deploy/kali-slim/Dockerfile` on `nexus-vm` (or local registry) and apply `deploy/resource-quota.yaml` + `deploy/network-policy-prod.yaml`.
+2. Reopen/update `rlabz-ctf` PR for `fix/attackbox-terminal-proxy`, run the full browser AttackBox test from Fedora host → `nexus-vm`, and merge both `MR !8` and `rlabz-ctf` PR.
+3. Open and merge `feat/telemetry-t1-scrape-stack` (`31b5104`) after core product flows are verified.
 
 ## Private share (not in git)
 
@@ -66,8 +53,7 @@ If the directory is missing, say so; do not reconstruct the plan from guesswork.
   while the docs claim 1022.
 - Real event host specs are unknown, so the capacity math and the 3x load test
   have no target yet.
-- `nexus-vm` has scratch engine instances on `:8082`/`:8084` (`mode=dev`); root-owned
-  `:8081` service is unchanged (needs sudo to upgrade).
+- `nexus-vm` root-owned `:8081` `nexus-engine` service needs sudo to upgrade to `feat/attackbox-env-session`.
 
 ## Noted, unresolved on the VM
 

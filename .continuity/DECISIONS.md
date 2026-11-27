@@ -93,3 +93,12 @@ Append-only. Newest at the bottom. Don't edit old entries; supersede them with a
 - Over: making challenge pods persist, or relying on images to stay alive.
 - Because: an env pod's purpose is to hold a terminal open. Images do not, in general (`alpine:3.19` exits, phase becomes Succeeded, and kubelet's exec refuses: "cannot exec into a container in a completed pod"). The fix is in `k8s/client.go` + `api/sessions.go`.
 - Revisit if: someone wants env pods to be image-command-driven, e.g. a custom AttackBox image that starts sshd itself.
+
+## D-025: Capacity guards and VPN IP lifecycle fixes
+- Date: 2026-11-27
+- Chose:
+  1. `deploy/resource-quota.yaml` (`LimitRange` 500m/512Mi default, 2/2Gi max + `ResourceQuota` 250 pods) and `NEXUS_MAX_SESSIONS` global active session cap in `nexus-engine`.
+  2. `Store.ReleaseVPNIP` in `redis.go` + `vpn.go` fixes: `VpnStatus.connected` uses `peer.Connected` (180s handshake window), cached `Config` hits re-ensure the WireGuard peer, failed provisioning releases newly claimed IPs, and `Regenerate` pins the user's existing VPN IP.
+- Over: leaving `vpn_ips` to leak on node-agent errors or changing a user's VPN IP on key rotation (which strands active `EnsureUserIsolation` iptables rules).
+- Because: 200+ concurrent users on a single k3s host cannot survive unbounded pods or leaked `/22` addresses, and "connected" must reflect an actual WireGuard handshake rather than peer presence.
+- Revisit if: multi-node k8s replaces single-host limits, or `Regenerate` is explicitly intended to rotate IPs alongside revoking isolation rules.

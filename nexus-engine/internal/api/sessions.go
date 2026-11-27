@@ -71,17 +71,9 @@ func (h *sessionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Enforce session limit if configured.
-	maxPerUser := h.d.Cfg.GetMaxPerUser()
-	if maxPerUser > 0 {
-		count, _ := h.d.Store.CountUserActiveSessions(req.UserID)
-		if count >= maxPerUser {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":   "SESSION_LIMIT_REACHED",
-				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", req.UserID, count, maxPerUser),
-			})
-			return
-		}
+	// Enforce global and per-user session limits if configured.
+	if !h.checkSessionLimits(c, req.UserID) {
+		return
 	}
 
 	// Prod mode: vpn_ip is required for isolation.
@@ -277,6 +269,31 @@ func validArtifactID(id string) bool {
 	return !strings.ContainsAny(id, `/\`) && !strings.Contains(id, "..")
 }
 
+// checkSessionLimits enforces the cluster-wide session cap and per-user limit.
+func (h *sessionHandler) checkSessionLimits(c *gin.Context, userID string) bool {
+	if maxGlobal := h.d.Cfg.GetMaxGlobalSessions(); maxGlobal > 0 {
+		active, err := h.d.Store.ListActiveSessions()
+		if err == nil && len(active) >= maxGlobal {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":   "GLOBAL_SESSION_LIMIT_REACHED",
+				"message": fmt.Sprintf("cluster active session limit reached (%d/%d)", len(active), maxGlobal),
+			})
+			return false
+		}
+	}
+	if maxPerUser := h.d.Cfg.GetMaxPerUser(); maxPerUser > 0 {
+		count, _ := h.d.Store.CountUserActiveSessions(userID)
+		if count >= maxPerUser {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "SESSION_LIMIT_REACHED",
+				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", userID, count, maxPerUser),
+			})
+			return false
+		}
+	}
+	return true
+}
+
 // CreateEnv spawns an environment pod (browser AttackBox) for a user.
 func (h *sessionHandler) CreateEnv(c *gin.Context) {
 	var req CreateEnvSessionRequest
@@ -325,16 +342,8 @@ func (h *sessionHandler) CreateEnv(c *gin.Context) {
 		})
 	}
 
-	maxPerUser := h.d.Cfg.GetMaxPerUser()
-	if maxPerUser > 0 {
-		count, _ := h.d.Store.CountUserActiveSessions(req.UserID)
-		if count >= maxPerUser {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":   "SESSION_LIMIT_REACHED",
-				"message": fmt.Sprintf("user %q already has %d session(s), limit is %d", req.UserID, count, maxPerUser),
-			})
-			return
-		}
+	if !h.checkSessionLimits(c, req.UserID) {
+		return
 	}
 
 	sessionID := fmt.Sprintf("sess-%s", uuid.New().String()[:8])

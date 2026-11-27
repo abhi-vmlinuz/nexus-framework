@@ -111,3 +111,14 @@ func TestCreateEnvFindsArtifactDir(t *testing.T) {
 	}()
 	postEnv(t, r, map[string]any{"user_id": "u1", "artifact_challenge_id": "web-101"})
 }
+
+func TestConfigMaxGlobalSessions(t *testing.T) {
+	t.Setenv("NEXUS_MAX_SESSIONS", "250")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if got := cfg.GetMaxGlobalSessions(); got != 250 {
+		t.Fatalf("GetMaxGlobalSessions() = %d, want 250", got)
+	}
+}

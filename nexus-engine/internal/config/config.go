@@ -153,6 +153,10 @@ type SessionConfig struct {
 	// MaxPerUser is the maximum concurrent sessions per user_id.
 	// 0 means unlimited.
 	MaxPerUser int
+
+	// MaxGlobalSessions is the cluster-wide cap on concurrent active sessions.
+	// 0 means unlimited. Set via NEXUS_MAX_SESSIONS.
+	MaxGlobalSessions int
 }
 
 // Load reads configuration from environment variables.
@@ -242,6 +246,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("NEXUS_MAX_SESSIONS_PER_USER: %w", err)
 	}
 
+	maxGlobalSessions, err := parseInt("NEXUS_MAX_SESSIONS", 0)
+	if err != nil {
+		return nil, fmt.Errorf("NEXUS_MAX_SESSIONS: %w", err)
+	}
+
 	nodeAgentInsecure, err := parseBool("NEXUS_NODE_AGENT_INSECURE", mode == "dev")
 	if err != nil {
 		return nil, fmt.Errorf("NEXUS_NODE_AGENT_INSECURE: %w", err)
@@ -279,6 +288,7 @@ func Load() (*Config, error) {
 		Session: SessionConfig{
 			DefaultTTLMinutes: defaultTTL,
 			MaxPerUser:        maxPerUser,
+			MaxGlobalSessions: maxGlobalSessions,
 		},
 		Env: EnvConfig{
 			Image:        getenv("NEXUS_ENV_IMAGE", "nexus-kali-slim:latest"),
@@ -356,6 +366,12 @@ func (c *Config) GetMaxPerUser() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.Session.MaxPerUser
+}
+
+func (c *Config) GetMaxGlobalSessions() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Session.MaxGlobalSessions
 }
 
 func (c *Config) GetMaxWorkers() int {

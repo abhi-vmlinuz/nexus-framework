@@ -576,6 +576,15 @@ func (s *Store) SetVPNConfig(cfg *VPNConfig) error {
 	return nil
 }
 
+// ReleaseVPNIP removes an allocated IP from the vpn_ips pool.
+// Safe to call when a provisioning step fails after ClaimNextAvailableVPNIP.
+func (s *Store) ReleaseVPNIP(ip string) error {
+	if ip == "" {
+		return nil
+	}
+	return s.client.SRem(s.ctx, "vpn_ips", ip).Err()
+}
+
 // DeleteVPNConfig removes a user's VPN config and frees their IP.
 func (s *Store) DeleteVPNConfig(userID string) error {
 	cfg, err := s.GetVPNConfig(userID)
